@@ -1,10 +1,13 @@
 #include <cstdint>
 #include <cstddef>
+#include <cstring>
 #include <exception>
 #include <iostream>
 #include <string>
 
 using Bytes = std::size_t;
+using MessageCount = std::uint16_t;
+using SequenceNumber = std::uint64_t;
 
 class PacketTruncatedError : public std::exception {
 public:
@@ -21,7 +24,7 @@ private:
 
 struct SequenceGap {
     bool active = false;
-    std::uint64_t request_until_sequence_num = 0;
+    SequenceNumber request_until_sequence_num = 0;
 };
 
 template <typename T>
@@ -44,7 +47,7 @@ static T read_big_endian(const std::uint8_t* buf,  Bytes offset) {
 
 class MoldUDP64 {
 public:
-    MoldUDP64(std::uint64_t request_sequence_num_)
+    MoldUDP64(SequenceNumber request_sequence_num_)
         : expected_sequence_num(request_sequence_num_) {}
 
     void handle_packet(const std::uint8_t* buf, Bytes len) {
@@ -54,10 +57,16 @@ public:
         Bytes curr_offset = 0;
 
         // get first 10 bytes for session (endian conversion is not needed)
+        std::memcpy(session, buf + curr_offset, SESSION_LENGTH);
+        curr_offset += SESSION_LENGTH;
 
         // get the next 8 bytes for sequence number and convert to endian 
+        SequenceNumber sequence_number = read_big_endian<SequenceNumber>(buf, curr_offset);
+        curr_offset += sizeof(SequenceNumber);
 
         // get the next 2 bytes for message count (should always be 1 for now)
+        MessageCount message_count = read_big_endian<MessageCount>(buf, curr_offset);
+        curr_offset += sizeof(MessageCount);
 
         // current_sequence_number = sequence_number + message_count
     }
@@ -73,7 +82,7 @@ private:
     static constexpr std::uint16_t TIMEOUT = 1000;  // ms
     static constexpr std::uint16_t END_SESSION = 0xFFFF;
 
-    char session[SESSION_LENGTH]{};
-    std::uint64_t expected_sequence_num;
+    SequenceNumber expected_sequence_num;
     SequenceGap gap;
+    char session[SESSION_LENGTH]{};
 };
