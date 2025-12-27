@@ -1,13 +1,17 @@
+#include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstddef>
 #include <cstring>
 #include <exception>
 #include <iostream>
+#include <optional>
 #include <string>
 
 using Bytes = std::size_t;
 using MessageCount = std::uint16_t;
 using SequenceNumber = std::uint64_t;
+using Clock = std::chrono::steady_clock;
 
 class PacketTruncatedError : public std::exception {
 public:
@@ -20,11 +24,6 @@ public:
     }
 private:
     std::string message_;
-};
-
-struct SequenceGap {
-    bool active = false;
-    SequenceNumber request_until_sequence_num = 0;  // 0 means we're on track, -1 means uninit
 };
 
 template <typename T>
@@ -48,7 +47,7 @@ static T read_big_endian(const std::uint8_t* buf,  Bytes offset) {
 class MoldUDP64 {
 public:
     MoldUDP64(SequenceNumber request_sequence_num_)
-        : expected_sequence_num(request_sequence_num_) {}
+        : next_expected_sequence_num(request_sequence_num_) {}
 
     void handle_packet(const std::uint8_t* buf, Bytes len) {
         // parse packet header
@@ -63,71 +62,89 @@ public:
         curr_offset += sizeof(SequenceNumber);
 
         MessageCount message_count = read_big_endian<MessageCount>(buf, curr_offset);  // INVARIANT: 1 message per packet
-        if (message_count == END_SESSION) message_count = 0;
+        bool session_has_ended = (message_count == END_SESSION);
+        if (session_has_ended) message_count = 0;
         curr_offset += sizeof(MessageCount);
 
         SequenceNumber next_sequence_number = sequence_number + message_count;
-
-        // if the sequence_number > expected_sequence_num -> A packet has been dropped/delayed
-            // check if back fill (i.e., request_until_sequence_num = UNKOWN)
-                // This basically means you connected to the exchange late and need to catch up (cold start)
-
-                // update request_until_sequence_num to next_sequence_number
-                // request the expected_sequence_num to the exchange sim
-
-            // check if gap fill (i.e., you were connected but packets were dropped/not in order)
-
-                // update request_until_sequence_num to next_sequence_number
-                // request the expected_sequence_num to the exchange sim
-
-            // else: (we are already in recover mode)
-                
-                // set the request_until_sequence_num bound to the max between request_until_sequence_num and new_sequence_number
-
-                // retry if enough time has surpased (now - last request > TIMEOUT)
-                    // request the expected_sequence_num to the exchange sim
-        // else (packet is not ahead) -> in-order, duplicate, or old packet
-            // if we were in recovery mode (request_until_sequence_num != 0)
-
-                // if back fill (i.e., request_until_sequence_num = UNKOWN)
-                    // reset request_until_sequence_num
-                    // update status to synced
-                
-                // else if the request_until_sequence_num == next_sequence_number (gap_fill)
-
-                    // reset request_until_sequence_num
-                    // update status to synced
-                
-                // else
-                    
-                    // request the nextSequenceNumber
-            
-                    // design tradeoff (detecting a gap immediately and requesting the missing range w/o storing all sequences)
-            
-            // if session is ending
-                // end session
-            // else if sequence_number < expected_sequence_num
-                // return (i.e., old/duplicate packet)
-            // else if sequence_number == expected_sequence_num
-                // deliver message
-                // increment expected_sequence_num
         
-    }           
+        if (next_expected_sequence_num == 0) {
+            next_expected_sequence_num = sequence_number;
+        }
 
-    void request() {}
-    
-    void end_session() {
-        gap.active = false;
-        gap.request_until_sequence_num = 0;
+        if (sequence_number > next_expected_sequence_num) { 
+            // A packet has been dropped/delayed
+            if (!request_until_sequence_num) {                     // Back Fill
+                
+                request_until_sequence_num = next_sequence_number;
+                request(next_expected_sequence_num);
+
+            } else if (*request_until_sequence_num == SYNCHRONIZED) {         // Gap Fill
+
+                request_until_sequence_num = next_sequence_number;
+                request(next_expected_sequence_num);
+
+            } else {                                                         // Already in recovery mode
+                request_until_sequence_num = std::max(*request_until_sequence_num, next_sequence_number);
+                
+                if (Clock::now() - last_request_sent > TIMEOUT) {
+                    request(next_expected_sequence_num);
+                }
+            }
+        } else {
+
+            // old/duplicate packet check
+            if (sequence_number < next_expected_sequence_num) return;
+
+            // recovery check
+            if (!request_until_sequence_num || *request_until_sequence_num != SYNCHRONIZED) {
+                if (!request_until_sequence_num) {
+
+                    request_until_sequence_num = SYNCHRONIZED;
+
+                } else if (*request_until_sequence_num == next_sequence_number) {
+                    
+                    request_until_sequence_num = SYNCHRONIZED;
+                
+                } else {
+
+                    request(next_sequence_number);
+
+                }
+            }
+
+            if (session_has_ended) {
+                return;
+            } else if (sequence_number == next_expected_sequence_num) {
+                read();  // design choice: can be redudant because packets must be read in order
+            }
+        }
+    }
+
+    void request(SequenceNumber sequence_number) {
+        // handle request ...
+
+        last_request_sent = Clock::now();
+    }
+
+    void read() {
+        next_expected_sequence_num++;
     }
 
 private:
     static constexpr Bytes SESSION_LENGTH = 10;
     static constexpr Bytes HEADER_LENGTH = 20;
-    static constexpr std::uint16_t TIMEOUT = 1000;  // ms
     static constexpr std::uint16_t END_SESSION = 0xFFFF;
- 
-    SequenceNumber expected_sequence_num;
-    SequenceGap gap;
+    static constexpr auto TIMEOUT = std::chrono::milliseconds(1000);
+
+    // status
+    static constexpr std::nullopt_t SEQUENCE_LIMIT_UNKNOWN = std::nullopt;
+    static constexpr SequenceNumber SYNCHRONIZED = 0;
+
+    Clock::time_point last_request_sent{};
+
+    SequenceNumber next_expected_sequence_num;
+    std::optional<SequenceNumber> request_until_sequence_num = SEQUENCE_LIMIT_UNKNOWN;
+    
     char session[SESSION_LENGTH]{};
 };
