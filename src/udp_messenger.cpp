@@ -8,6 +8,9 @@
 
 using Bytes = std::size_t;
 
+/*
+UDP Wrapper Class
+*/
 class UdpMessenger {
 public:
     UdpMessenger(const std::string& ip, std::uint16_t port) {
@@ -17,7 +20,6 @@ public:
         }
 
         memset(&destaddr, 0, sizeof(destaddr));
-
         destaddr.sin_family = AF_INET;
         destaddr.sin_port = htons(port);
 
