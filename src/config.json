@@ -1,7 +1,22 @@
 {
-    "network" : {
-        "subscriber_port" : 14000,
-        "exchange_port" : 9000
+    "network": {
+        "exchanges" : [
+            {
+               "feed" : {
+                "port" : 9000
+               },
+               "retransmit" : {
+                "request_ip" : "127.0.0.1",
+                "request_port" : 9001
+               }
+            }
+        ],
+        "subscribers" : [
+            {
+            "ip": "127.0.0.1", 
+            "port": 14000 
+            }
+        ]
     },
     "runtime" : {
         "subscriber_thread_pool_size" : 4,

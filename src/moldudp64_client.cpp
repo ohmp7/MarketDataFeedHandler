@@ -33,14 +33,19 @@ template <typename T>
 static T read_big_endian(const std::uint8_t* buf,  Bytes offset) {
     T converted = 0;
     for (Bytes i = 0; i < sizeof(T); ++i) {
-        // shift left 8 bits
-        converted = converted << 8;
-        // get next byte from buf
+        converted <<= 8;
         std::uint8_t next_byte = buf[offset + i];
-        // OR operation with lower 8 bits
         converted = converted | static_cast<T>(next_byte);
     }
     return converted;
+}
+
+template <typename T>
+static void write_big_endian(std::uint8_t* buf, Bytes offset, T value) {
+    for (Bytes i = 0; i < sizeof(T); ++i) {
+        buf[offset + sizeof(T) - i - 1] = static_cast<uint8_t>(value & 0xFF);
+        value >>= 8;
+    }
 }
 
 /*
