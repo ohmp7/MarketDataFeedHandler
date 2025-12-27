@@ -1,4 +1,7 @@
+#include "udp_messenger.h"
+
 #include <algorithm>
+#include <cassert>
 #include <chrono>
 #include <cstdint>
 #include <cstddef>
@@ -53,9 +56,9 @@ Client Handler for MoldUDP64 Network Protocol, a lightweight protocol layer buil
 */
 class MoldUDP64 {
 public:
-    MoldUDP64(SequenceNumber request_sequence_num_)
-        : next_expected_sequence_num(request_sequence_num_) {}
-
+    MoldUDP64(SequenceNumber request_sequence_num_, int sockfd, const std::string& ip, std::uint16_t port)
+        : next_expected_sequence_num(request_sequence_num_), messenger(sockfd, ip, port) {}
+    
     void handle_packet(const std::uint8_t* buf, Bytes len) {
         // Parse the given packet's header
         if (len < HEADER_LENGTH) throw PacketTruncatedError(len, HEADER_LENGTH);
@@ -85,12 +88,12 @@ public:
         if (sequence_number > next_expected_sequence_num) { 
    
             if (!request_until_sequence_num) {                            // Backfill: (cold start)
-                // begin requesting packets up until up-to-date
+                // begin requesting packets until up-to-date
                 request_until_sequence_num = next_sequence_number;
                 request(next_expected_sequence_num);
 
             } else if (*request_until_sequence_num == SYNCHRONIZED) {     // Gapfill: (previously synchronized, but detected missing packets)
-                // begin requesting packets up until up-to-date
+                // begin requesting packets until up-to-date
                 request_until_sequence_num = next_sequence_number;
                 request(next_expected_sequence_num);
 
@@ -120,7 +123,6 @@ public:
                 } else {
                     // still in recovery state: request next packet
                     request(next_sequence_number);
-
                 }
             }
 
@@ -130,10 +132,22 @@ public:
             if (sequence_number == next_expected_sequence_num) read();
         }
     }
-
+private:
     void request(SequenceNumber sequence_number) {
-        // Send a request packet for retransmission starting from 'sequence_number'
+        assert(*request_until_sequence_num >= sequence_number); // TODO: remove later
 
+        // Send a request packet for retransmission starting from 'sequence_number'
+        SequenceNumber packets_remaining = *request_until_sequence_num - sequence_number;
+        SequenceNumber messages_to_send = std::min<SequenceNumber>(packets_remaining, static_cast<SequenceNumber>(MAX_MESSAGE_COUNT));
+        MessageCount message_count = static_cast<MessageCount>(messages_to_send);
+
+        std::uint8_t header[HEADER_LENGTH]{};
+
+        std::memcpy(header, session, SESSION_LENGTH);
+        write_big_endian<SequenceNumber>(header, SESSION_LENGTH, sequence_number);
+        write_big_endian<MessageCount>(header, SESSION_LENGTH + sizeof(SequenceNumber), message_count);
+
+        messenger.send_datagram(header, HEADER_LENGTH);
         last_request_sent = Clock::now();
     }
 
@@ -141,23 +155,22 @@ public:
         ++next_expected_sequence_num;
     }
 
-private:
     static constexpr Bytes SESSION_LENGTH = 10;
     static constexpr Bytes HEADER_LENGTH = 20;
-    static constexpr std::uint16_t END_SESSION = 0xFFFF;
+
+    static constexpr MessageCount END_SESSION = 0xFFFF;
+    static constexpr MessageCount MAX_MESSAGE_COUNT = END_SESSION - 1;
     static constexpr auto TIMEOUT = std::chrono::milliseconds(1000);
 
-    // State Helpers 
-    static constexpr std::nullopt_t SEQUENCE_LIMIT_UNKNOWN = std::nullopt;
+    // Recovery window upper bound (exclusive)
+    // State Helpers: std::nullopt = uninitialized ; 0 = synchronized, > 0 = recovery mode
     static constexpr SequenceNumber SYNCHRONIZED = 0;
-
-    Clock::time_point last_request_sent{};
+    std::optional<SequenceNumber> request_until_sequence_num =  std::nullopt;
 
     // next sequence number in order
     SequenceNumber next_expected_sequence_num;
-
-    // Recovery window upper bound (exclusive)
-    std::optional<SequenceNumber> request_until_sequence_num = SEQUENCE_LIMIT_UNKNOWN;
+    Clock::time_point last_request_sent{};
+    UdpMessenger messenger;
     
     char session[SESSION_LENGTH]{};
 };
