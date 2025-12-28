@@ -1,1 +1,0 @@
-/usr/bin/c++  -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/market_plant.dir/src/market/market_plant.cpp.o -o market_plant  libnetwork_lib.a
