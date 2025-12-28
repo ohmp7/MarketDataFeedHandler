@@ -1,4 +1,4 @@
-#include "udp_messenger.h"
+#include "moldudp64_client.h"
 
 #include <algorithm>
 #include <cassert>
@@ -11,166 +11,130 @@
 #include <optional>
 #include <string>
 
-using Bytes = std::size_t;
-using MessageCount = std::uint16_t;
-using SequenceNumber = std::uint64_t;
-using Clock = std::chrono::steady_clock;
-
-class PacketTruncatedError : public std::exception {
-public:
-    PacketTruncatedError(Bytes received, Bytes expected)
+PacketTruncatedError::PacketTruncatedError(Bytes received, Bytes expected)
         : message_("Packet Truncated Error: received " + std::to_string(received) +
                    " bytes, but was expecting >= " + std::to_string(expected)) {}
     
-    virtual const char* what() const noexcept override {
-        return message_.c_str();
-    }
-private:
-    std::string message_;
-};
-
-/*
-Handling Network-Byte-Order Integers.
-*/
-template <typename T>
-static T read_big_endian(const std::uint8_t* buf,  Bytes offset) {
-    T converted = 0;
-    for (Bytes i = 0; i < sizeof(T); ++i) {
-        converted <<= 8;
-        std::uint8_t next_byte = buf[offset + i];
-        converted = converted | static_cast<T>(next_byte);
-    }
-    return converted;
+const char* PacketTruncatedError::what() const noexcept {
+    return message_.c_str();
 }
 
-template <typename T>
-static void write_big_endian(std::uint8_t* buf, Bytes offset, T value) {
-    for (Bytes i = 0; i < sizeof(T); ++i) {
-        buf[offset + sizeof(T) - i - 1] = static_cast<uint8_t>(value & 0xFF);
-        value >>= 8;
-    }
-}
+MoldUDP64::MoldUDP64(SequenceNumber request_sequence_num_, int sockfd, const std::string& ip, std::uint16_t port)
+    : next_expected_sequence_num(request_sequence_num_), messenger(sockfd, ip, port) {}
 
-/*
-Client Handler for MoldUDP64 Network Protocol, a lightweight protocol layer built on top of UDP.
-*/
-class MoldUDP64 {
-public:
-    MoldUDP64(SequenceNumber request_sequence_num_, int sockfd, const std::string& ip, std::uint16_t port)
-        : next_expected_sequence_num(request_sequence_num_), messenger(sockfd, ip, port) {}
+bool MoldUDP64::handle_packet(const std::uint8_t* buf, Bytes len) {
+    msg = {};
+
+    // Parse the given packet's header
+    if (len < HEADER_LENGTH) throw PacketTruncatedError(len, HEADER_LENGTH);
+
+    Bytes curr_offset = 0;
+
+    std::memcpy(session, buf + curr_offset, SESSION_LENGTH);
+    curr_offset += SESSION_LENGTH;
+
+    SequenceNumber sequence_number = read_big_endian<SequenceNumber>(buf, curr_offset);
+    curr_offset += sizeof(SequenceNumber);
+
+    // INVARIANT: 1 message per packet
+    MessageCount message_count = read_big_endian<MessageCount>(buf, curr_offset); 
+    bool session_has_ended = (message_count == END_SESSION);
+    if (session_has_ended) message_count = 0;
+    curr_offset += sizeof(MessageCount);
+
+    SequenceNumber next_sequence_number = sequence_number + message_count;
     
-    void handle_packet(const std::uint8_t* buf, Bytes len) {
-        // Parse the given packet's header
-        if (len < HEADER_LENGTH) throw PacketTruncatedError(len, HEADER_LENGTH);
+    // If 'next_expected_sequence_num' was constructed with 0, initialize handler to start from the first received packet
+    if (next_expected_sequence_num == 0) {
+        next_expected_sequence_num = sequence_number;
+    }
 
-        Bytes curr_offset = 0;
+    // Check if a packet has been dropped or delayed
+    if (sequence_number > next_expected_sequence_num) { 
 
-        std::memcpy(session, buf + curr_offset, SESSION_LENGTH);
-        curr_offset += SESSION_LENGTH;
+        if (!request_until_sequence_num) {                            // Backfill: (cold start)
+            // begin requesting packets until up-to-date
+            request_until_sequence_num = next_sequence_number;
+            request(next_expected_sequence_num);
 
-        SequenceNumber sequence_number = read_big_endian<SequenceNumber>(buf, curr_offset);
-        curr_offset += sizeof(SequenceNumber);
+        } else if (*request_until_sequence_num == SYNCHRONIZED) {     // Gapfill: (previously synchronized, but detected missing packets)
+            // begin requesting packets until up-to-date
+            request_until_sequence_num = next_sequence_number;
+            request(next_expected_sequence_num);
 
-        // INVARIANT: 1 message per packet
-        MessageCount message_count = read_big_endian<MessageCount>(buf, curr_offset); 
-        bool session_has_ended = (message_count == END_SESSION);
-        if (session_has_ended) message_count = 0;
-        curr_offset += sizeof(MessageCount);
+        } else {                                                     // Already recovering: update recovery window if needed
+            request_until_sequence_num = std::max(*request_until_sequence_num, next_sequence_number);
+            
+            // Throttle retries
+            if (Clock::now() - last_request_sent > TIMEOUT) {
+                request(next_expected_sequence_num);
+            }
+        }
+    } else {
 
-        SequenceNumber next_sequence_number = sequence_number + message_count;
+        // Check if the current packet is behind the current up-to-date stream of packets (if so, drop the packet)
+        if (sequence_number < next_expected_sequence_num) return false;
+
+        // Check if handler was previously in recovery state
+        if (!request_until_sequence_num || *request_until_sequence_num != SYNCHRONIZED) {
+            if (!request_until_sequence_num) {
+                // Cold start: backfilling will now begin
+                request_until_sequence_num = SYNCHRONIZED;
+
+            } else if (*request_until_sequence_num == next_sequence_number) {
+                // Reached the recovery window's end bound; gap has been filled and recovered
+                request_until_sequence_num = SYNCHRONIZED;
+            
+            } else {
+                // still in recovery state: request next packet
+                request(next_sequence_number);
+            }
+        }
+
+        if (session_has_ended) return false;
         
-        // If 'next_expected_sequence_num' was constructed with 0, initialize handler to start from the first received packet
-        if (next_expected_sequence_num == 0) {
-            next_expected_sequence_num = sequence_number;
-        }
-
-        // Check if a packet has been dropped or delayed
-        if (sequence_number > next_expected_sequence_num) { 
-   
-            if (!request_until_sequence_num) {                            // Backfill: (cold start)
-                // begin requesting packets until up-to-date
-                request_until_sequence_num = next_sequence_number;
-                request(next_expected_sequence_num);
-
-            } else if (*request_until_sequence_num == SYNCHRONIZED) {     // Gapfill: (previously synchronized, but detected missing packets)
-                // begin requesting packets until up-to-date
-                request_until_sequence_num = next_sequence_number;
-                request(next_expected_sequence_num);
-
-            } else {                                                     // Already recovering: update recovery window if needed
-                request_until_sequence_num = std::max(*request_until_sequence_num, next_sequence_number);
-                
-                // Throttle retries
-                if (Clock::now() - last_request_sent > TIMEOUT) {
-                    request(next_expected_sequence_num);
-                }
-            }
-        } else {
-
-            // Check if the current packet is behind the current up-to-date stream of packets (if so, drop the packet)
-            if (sequence_number < next_expected_sequence_num) return;
-
-            // Check if handler was previously in recovery state
-            if (!request_until_sequence_num || *request_until_sequence_num != SYNCHRONIZED) {
-                if (!request_until_sequence_num) {
-                    // Cold start: backfilling will now begin
-                    request_until_sequence_num = SYNCHRONIZED;
-
-                } else if (*request_until_sequence_num == next_sequence_number) {
-                    // Reached the recovery window's end bound; gap has been filled and recovered
-                    request_until_sequence_num = SYNCHRONIZED;
-                
-                } else {
-                    // still in recovery state: request next packet
-                    request(next_sequence_number);
-                }
-            }
-
-            if (session_has_ended) return;
-           
-            // In-order packet parsing (one message per event)
-            if (sequence_number == next_expected_sequence_num) read();
+        // In-order packet parsing (one message per event)
+        if (sequence_number == next_expected_sequence_num) {
+            read(buf, len);
+            return true;
         }
     }
-private:
-    void request(SequenceNumber sequence_number) {
-        assert(*request_until_sequence_num >= sequence_number); // TODO: remove later
+    return false;
+}
 
-        // Send a request packet for retransmission starting from 'sequence_number'
-        SequenceNumber packets_remaining = *request_until_sequence_num - sequence_number;
-        SequenceNumber messages_to_send = std::min<SequenceNumber>(packets_remaining, static_cast<SequenceNumber>(MAX_MESSAGE_COUNT));
-        MessageCount message_count = static_cast<MessageCount>(messages_to_send);
+MessageView MoldUDP64::message_view() const { return msg; }
 
-        std::uint8_t header[HEADER_LENGTH]{};
 
-        std::memcpy(header, session, SESSION_LENGTH);
-        write_big_endian<SequenceNumber>(header, SESSION_LENGTH, sequence_number);
-        write_big_endian<MessageCount>(header, SESSION_LENGTH + sizeof(SequenceNumber), message_count);
+void MoldUDP64::request(SequenceNumber sequence_number) {
+    assert(*request_until_sequence_num >= sequence_number); // TODO: remove later
 
-        messenger.send_datagram(header, HEADER_LENGTH);
-        last_request_sent = Clock::now();
-    }
+    // Send a request packet for retransmission starting from 'sequence_number'
+    SequenceNumber packets_remaining = *request_until_sequence_num - sequence_number;
+    SequenceNumber messages_to_send = std::min<SequenceNumber>(packets_remaining, static_cast<SequenceNumber>(MAX_MESSAGE_COUNT));
+    MessageCount message_count = static_cast<MessageCount>(messages_to_send);
 
-    void read() {
-        ++next_expected_sequence_num;
-    }
+    std::uint8_t header[HEADER_LENGTH]{};
 
-    static constexpr Bytes SESSION_LENGTH = 10;
-    static constexpr Bytes HEADER_LENGTH = 20;
+    std::memcpy(header, session, SESSION_LENGTH);
+    write_big_endian<SequenceNumber>(header, SESSION_LENGTH, sequence_number);
+    write_big_endian<MessageCount>(header, SESSION_LENGTH + sizeof(SequenceNumber), message_count);
 
-    static constexpr MessageCount END_SESSION = 0xFFFF;
-    static constexpr MessageCount MAX_MESSAGE_COUNT = END_SESSION - 1;
-    static constexpr auto TIMEOUT = std::chrono::milliseconds(1000);
+    messenger.send_datagram(header, HEADER_LENGTH);
+    last_request_sent = Clock::now();
+}
 
-    // Recovery window upper bound (exclusive)
-    // State Helpers: std::nullopt = uninitialized ; 0 = synchronized, > 0 = recovery mode
-    static constexpr SequenceNumber SYNCHRONIZED = 0;
-    std::optional<SequenceNumber> request_until_sequence_num =  std::nullopt;
+void MoldUDP64::read(const std::uint8_t* buf, Bytes len) {
+    // Read through the packet's message block
+    if (HEADER_LENGTH + MESSAGE_HEADER_LENGTH > len) throw PacketTruncatedError(len, HEADER_LENGTH + MESSAGE_HEADER_LENGTH);
 
-    // next sequence number in order
-    SequenceNumber next_expected_sequence_num;
-    Clock::time_point last_request_sent{};
-    UdpMessenger messenger;
+    Bytes curr_offset = HEADER_LENGTH;
+    std::uint16_t curr_message_len = read_big_endian<std::uint16_t>(buf, curr_offset);
+    curr_offset += MESSAGE_HEADER_LENGTH;
+
+    if (curr_offset + curr_message_len > len) throw PacketTruncatedError(len, curr_offset + curr_message_len);
     
-    char session[SESSION_LENGTH]{};
-};
+    msg.data = buf + curr_offset;
+    msg.len = static_cast<Bytes>(curr_message_len);
+
+    ++next_expected_sequence_num;
+}
