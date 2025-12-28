@@ -1,4 +1,6 @@
 #include "market_plant.h"
+#include "moldudp64_client.h"
+#include "market_cli.h"
 
 #include <fstream>
 #include <iostream>
@@ -10,56 +12,48 @@ OrderBook::OrderBook(const Depth depth_,  const InstrumentId instrument_id_)
     : instrument_id(instrument_id_), depth(depth_) {}
 
 
+// handle all subscription and order
+class MarketPlantServer {
+public:
+    // Takes in config class, which sets up all classes below
 
-static void print_help() {
-    std::cout
-        << "Usage: market_plant -c <config_path>\n"
-        << "       market_plant --help\n"
-        << "\n"
-        << "Options:\n"
-        << "  -c, --config   Path to config file\n"
-        << "  -h, --help     Show this message\n";
-}
+private:
+    // OrderBookManager (manages all instances of OrderBook class)
+    
+};
 
-static void parse_config(const char* path) {
+class ExchangeFeed {
+public:
+    ExchangeFeed() {}
 
-} 
+private:
+    MoldUDP64 protocol();
+};
 
-static bool parse_args(int argc, char* argv[]) {
-    if (argc <= 1) throw std::runtime_error("insufficient options provided.");
-    int config_file_idx = -1;
 
-    for (size_t i = 1; i < argc; ++i) {
-        std::string option = argv[i];
+// Exchange Side:
+// IP, Port
+// Establish connection with exchange
+// Ingesting new packets of data recvfrom()
+// Parsing MoldUDP64::handle_packet()
+// updating the state of the orderbook
 
-        if (option == "-h" || option == "--help") {
-            print_help();
-            return false;
-        } else if (option == "-c" || option == "--config") {
-            if (i + 1 < argc) {
-                config_file_idx = i + 1;
-                ++i;
-            } else {
-                throw std::runtime_error("insufficient arguments provided.");
-            }
-        } else {
-            throw std::runtime_error("invalid option name provided.");
-        }
-    }
+// Subscriber Side
+// Manage subscribers
 
-    if (config_file_idx != -1) parse_config(argv[config_file_idx]);
-    return true;
-}
 
 int main(int argc, char* argv[]) {
+    Config conf{};
 
     try {
-        if (!parse_args(argc, argv)) return 0;
+        if (!parse_args(argc, argv, conf)) return 0;
     } catch (const std::runtime_error& e) {
-        std::cerr << "Error: " << e.what() << "\n";
+        std::cerr << "Error: " << e.what() << "\n\n";
         print_help();
         return 1;
     }
+
+    std::cout << "max threads: " << conf.runtime.sub_ptool_size << "\n";
 
     return 0;
 }

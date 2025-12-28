@@ -4,6 +4,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 project(MarketPlant)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 function(enable_warnings target)
   target_compile_options(${target} PRIVATE
     -Wall -Wextra -Wpedantic
@@ -19,14 +21,20 @@ target_include_directories(network_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src/ne
 
 
 # Market Plant Executable
-add_executable(market_plant src/market/market_plant.cpp)
+add_executable(market_plant src/market/market_plant.cpp src/market/cli/market_cli.cpp)
 enable_warnings(market_plant)
+target_include_directories(market_plant PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/market       
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/market/cli
+  /opt/homebrew/include
+)
 target_link_libraries(market_plant PRIVATE network_lib)
 
 
 # Exchange Executable
 add_executable(exchange src/app/exchange.cpp)
 enable_warnings(exchange)
+
 
 # Subscriber Executable
 add_executable(subscriber src/app/subscriber.cpp)

@@ -1,27 +1,14 @@
 {
-    "network": {
-        "exchanges" : [
-            {
-               "feed" : {
-                "port" : 9000
-               },
-               "retransmit" : {
-                "request_ip" : "127.0.0.1",
-                "request_port" : 9001
-               }
-            }
-        ],
-        "subscribers" : [
-            {
-            "ip": "127.0.0.1", 
-            "port": 14000 
-            }
-        ]
-    },
     "runtime" : {
         "subscriber_thread_pool_size" : 4,
-        "max_subscribers" : 12
+        "max_subscribers" : 4
     },
+    "exchanges" : [
+        {   
+            "port" : 9000,
+            "ip" : "127.0.0.1"
+        }
+    ],
     "instruments" : [
         {
             "instrument_id" : 1,
