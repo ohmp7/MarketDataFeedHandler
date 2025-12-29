@@ -52,14 +52,14 @@ struct OrderBookDelta {
 };
 
 // use std::move later
-class OrderBook {
-public:
-    OrderBook(const Depth depth_,  const InstrumentId instrument_id_);
+// class OrderBook {
+// public:
+//     OrderBook(const Depth depth_,  const InstrumentId instrument_id_);
     
-private:
-    InstrumentId instrument_id;
-    Depth depth;
+// private:
+//     InstrumentId instrument_id;
+//     Depth depth;
 
-    Levels bids;
-    Levels asks;
-};
+//     Levels bids;
+//     Levels asks;
+// };

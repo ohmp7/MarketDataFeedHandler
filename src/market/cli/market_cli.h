@@ -21,12 +21,11 @@ struct RuntimeConfig {
     uint16_t max_sub_limit;
 };
 
-using ExchangeConfig = std::vector<Exchange>;
 using InstrumentConfig = std::vector<Instrument>;
 
 struct Config {
     RuntimeConfig runtime;
-    ExchangeConfig exchanges;
+    Exchange exchange;
     InstrumentConfig instruments;
 };
 

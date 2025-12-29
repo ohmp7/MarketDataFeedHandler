@@ -3,12 +3,10 @@
         "subscriber_thread_pool_size" : 4,
         "max_subscribers" : 4
     },
-    "exchanges" : [
-        {   
-            "port" : 9000,
-            "ip" : "127.0.0.1"
-        }
-    ],
+    "exchange" : {   
+        "port" : 9000,
+        "ip" : "127.0.0.1"
+    },
     "instruments" : [
         {
             "instrument_id" : 1,

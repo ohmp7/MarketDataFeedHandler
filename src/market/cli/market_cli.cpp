@@ -31,23 +31,18 @@ static void parse_config(const char* path, Config& out) {
     doc.ParseStream(wrap);  // assume valid JSON
 
     auto& rt = out.runtime;
-    auto& ex = out.exchanges;
+    auto& ex = out.exchange;
     auto& in = out.instruments;
     const auto& rtjson = doc["runtime"];
-    const auto& exjson = doc["exchanges"].GetArray();
+    const auto& exjson = doc["exchange"];
     const auto& injson = doc["instruments"].GetArray();
     
     // runtime
     rt.sub_ptool_size = static_cast<std::uint16_t>(rtjson["subscriber_thread_pool_size"].GetUint());
     rt.max_sub_limit = static_cast<std::uint16_t>(rtjson["max_subscribers"].GetUint());
 
-    // exchanges
-    ex.reserve(exjson.Size());
-    for (const auto& e : exjson) {
-        ex.push_back(
-            Exchange{static_cast<std::uint16_t>(e["port"].GetUint()), e["ip"].GetString()}
-        );
-    }
+    // exchange
+    ex = Exchange{static_cast<std::uint16_t>(exjson["port"].GetUint()), exjson["ip"].GetString()};
 
     // instruments
     in.reserve(injson.Size());
