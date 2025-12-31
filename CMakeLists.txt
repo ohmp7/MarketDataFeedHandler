@@ -23,7 +23,11 @@ target_include_directories(network_lib PRIVATE
 )
 
 # Market Plant Executable
-add_executable(market_plant src/market/market_plant.cpp src/market/cli/market_cli.cpp)
+add_executable(market_plant
+    src/market/market_plant.cpp 
+    src/market/cli/market_cli.cpp
+)
+
 enable_warnings(market_plant)
 target_include_directories(market_plant PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src/market       

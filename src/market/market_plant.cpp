@@ -206,14 +206,6 @@ private:
         m_event.quantity = read_big_endian<Quantity>(p, off); off += sizeof(Quantity);
         m_event.exchange_ts = read_big_endian<Timestamp>(p, off); off += sizeof(Timestamp);
 
-        // std::cout << "Instruement ID: " << m_event.instrument_id << "\n"
-        //         <<"Side (bid = 0, ask = 1): " << static_cast<int>(m_event.side) << "\n"
-        //         <<"Event (add = 0, remove = 1): " << static_cast<int>(m_event.event) << "\n"
-        //         <<"Price: " << m_event.price << "\n"
-        //         <<"Quantity: " << m_event.quantity << "\n"
-        //         <<"Timestamp: " << m_event.exchange_ts << "\n"
-        //         << "\n";
-
         return m_event;
     }
 

@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package market_plant.v1;
+
+// Order Book Management
+
+enum Side {
+    SIDE_UNSPECIFIED = 0;
+    BID = 1;
+    ASK = 2;
+}
+
+message Level {
+    Side side = 1;
+    uint32 price = 2;
+    uint32 quantity = 3;
+}
+
+enum OrderBookEventType {
+    EVENT_UNSPECIFIED = 0;
+    ADD_LEVEL = 1;
+    REPLACE_LEVEL = 2;
+    REMOVE_LEVEL = 3;
+}
+
+message OrderBookEventUpdate {
+    OrderBookEventType type = 1;
+    Level level = 2;
+}
+
+message SnapshotUpdate {
+    repeated OrderBookEventUpdate bids = 1;
+    repeated OrderBookEventUpdate asks = 2;
+}
+
+message IncrementalUpdate {
+    OrderBookEventUpdate update = 1;
+}
+
+message OrderBookUpdate {
+    uint32 instrument_id = 1;
+    oneof update_type {
+        SnapshotUpdate snapshot = 2;
+        IncrementalUpdate incremental = 3;
+    }
+}
+
+// Subscription Management
+
+message InstrumentIds {
+    repeated uint32 ids = 1;
+}
+
+message Subscription {
+    oneof action {
+        InstrumentIds subscribe = 1;
+        InstrumentIds unsubscribe = 2;
+    }
+}
+
+service MarketPlantService {
+    rpc StreamUpdates (stream Subscription ) returns (stream OrderBookUpdate);
+}
