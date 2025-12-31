@@ -14,10 +14,14 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <mutex>
 #include <thread>
+#include <condition_variable>
 #include <unordered_map>
 #include <stdexcept>
 #include <string>
+
+#include "market_plant/market_plant.pb.h"
 
 constexpr std::uint16_t market_port = 9001;
 std::string market_ip = "127.0.0.1";
@@ -127,15 +131,6 @@ private:
 };
 
 
-// handle all subscription and order
-class MarketPlantServer {
-public:
-
-private:
-    // store subscribers via unique_ptr
-
-};
-
 class ExchangeFeed {
 public:
     ExchangeFeed(const Exchange& exchange, const InstrumentConfig& instruments)
@@ -227,6 +222,88 @@ private:
     BookManager orderbooks_;
 };
 
+// on construction, queue should be initialization to n snapshots of the n instruements subscribed to
+struct Subscriber {
+    uint32_t subscriber_id;
+    std::string token;
+
+    std::condition_variable cv;
+    std::mutex mutex;
+
+    // queue of Update(s) to send
+    // unordered_set of instruements subscribed to
+        // two public APIs: Subscribe, Unscubscribe
+            // Subscribe(instruementId) -> 
+                // If not in unordered_set, Add to unordered_set and add to ServerClass.Subscriptions
+            // Unsubscribe(instrumentId) ->
+                // If in unordered_set, remove from unordered_set.
+};
+
+struct Update {
+    // either:
+    // snapshot to depth n
+    // shared ptr to MarketEvent()
+};
+
+
+// Server Class should have 2 unordered_maps
+    // Subscribers -> Key: Subscriber ID, Value: Shared ptr to subscriber
+    // Subscriptions -> Key: Instruement ID, Value: vector<weak_ptr<Subscribers>>
+
+// Every time a new packet is received from exchange
+    // Get Subscribers for corresponding InstrumentID
+    // Iterate through Subscriber IDs
+        // If Subscriber weak ptr is null -> delete from vector
+
+        // Push new MarketEvent to the subscriber's event queue
+        // If the queue was previously empty, signal the CV
+
+grpc::Status StreamUpdates(grpc::ServerContext* context, const ms::Subscription* request, ::grpc::ServerWriter< ms::StreamResponse>* writer) {
+    // NOTE: on first call, it is a new subscribe
+
+    // construct new id (Subscriber Id) and Token
+        // Write back to stream
+    
+    // Initialize subscriber object
+        // use new id and token
+        // Add [key: Subscriber id, Value: Subscriber] to server class
+
+        // 
+
+
+    // while True
+        
+        // while (Subscriber's events are empty)
+            // sleep (w cv/mutex)
+
+            // if unsubscribe (i.e., empty snapshot)
+                // remove Subscriber from orderbook's vector
+
+                // remove instruementId from Server Class's unordered map [subscriber]
+                // if len(Server Class's unordered map [subscriber] == 0)
+                    // break
+
+            // write event to stream (empty snapshot tells client to empty its cache for given instrument)
+
+            // if cancel
+                // break
+    
+
+    // Remove from Subscribers unordered_map
+}
+
+grpc::Status UpdateSubscriptions(grpc::ServerContext* context, const ms::UpdateSubscriptionRequest* request, ::google::protobuf::Empty* response) {
+    // reject if subscription id and token doesn't match
+
+     // Add subscriber object to OrderBook's vector (potentially multiple)
+     // Add new instruements to Server's unordered map of Subscriber id to set of instruments
+     // initialize subscriber ID to BookManager's unordered map
+        // this should add snapshots to the queue
+    
+    // return
+}
+
+
 int main(int argc, char* argv[]) {
     Config conf{};
 
@@ -242,6 +319,9 @@ int main(int argc, char* argv[]) {
     ExchangeFeed feed(conf.exchange, conf.instruments);
     std::thread exchange_feed([&]{ feed.ConnectToExchange(); });
     exchange_feed.detach();
+
+    market_plant::v1::OrderBookUpdate update;
+    update.set_instrument_id(42);
 
     for (;;) {}  // placeholder
     return 0;
