@@ -1,4 +1,5 @@
-#include "moldudp64_client.h"
+#include "moldudp64.h"
+#include "endian.h"
 
 #include <algorithm>
 #include <cassert>
@@ -19,28 +20,36 @@ const char* PacketTruncatedError::what() const noexcept {
     return message_.c_str();
 }
 
+PacketHeader ParsePacketHeader(const std::uint8_t* buf, const Bytes len) {
+    // Parse the given packet's header
+    if (len < HEADER_LENGTH) throw PacketTruncatedError(len, HEADER_LENGTH);
+
+    Bytes curr_offset = 0;
+    PacketHeader header{};
+
+    std::memcpy(header.session, buf + curr_offset, SESSION_LENGTH);
+    curr_offset += SESSION_LENGTH;
+
+    header.sequence_number = read_big_endian<SequenceNumber>(buf, curr_offset);
+    curr_offset += sizeof(SequenceNumber);
+
+    // INVARIANT: 1 message per packet
+    header.message_count = read_big_endian<MessageCount>(buf, curr_offset); 
+
+    header.end_of_session = (header.message_count == END_SESSION);
+    if (header.end_of_session ) header.message_count = 0;
+
+    return header;
+}
+
 MoldUDP64::MoldUDP64(SequenceNumber request_sequence_num_, int sockfd, const std::string& ip, std::uint16_t port)
     : next_expected_sequence_num(request_sequence_num_), messenger(sockfd, ip, port) {}
 
 bool MoldUDP64::handle_packet(const std::uint8_t* buf, Bytes len) {
     msg = {};
+    const auto& [curr_session, sequence_number, message_count, session_has_ended] = ParsePacketHeader(buf, len);
 
-    // Parse the given packet's header
-    if (len < HEADER_LENGTH) throw PacketTruncatedError(len, HEADER_LENGTH);
-
-    Bytes curr_offset = 0;
-
-    std::memcpy(session, buf + curr_offset, SESSION_LENGTH);
-    curr_offset += SESSION_LENGTH;
-
-    SequenceNumber sequence_number = read_big_endian<SequenceNumber>(buf, curr_offset);
-    curr_offset += sizeof(SequenceNumber);
-
-    // INVARIANT: 1 message per packet
-    MessageCount message_count = read_big_endian<MessageCount>(buf, curr_offset); 
-    bool session_has_ended = (message_count == END_SESSION);
-    if (session_has_ended) message_count = 0;
-    curr_offset += sizeof(MessageCount);
+    if (!session.set) set_session(curr_session);
 
     SequenceNumber next_sequence_number = sequence_number + message_count;
     
@@ -102,6 +111,11 @@ bool MoldUDP64::handle_packet(const std::uint8_t* buf, Bytes len) {
     return false;
 }
 
+void MoldUDP64::set_session(const char (&src_session)[SESSION_LENGTH]) {
+    std::memcpy(session.session, src_session, SESSION_LENGTH);
+    session.set = true;
+}
+
 MessageView MoldUDP64::message_view() const { return msg; }
 
 
@@ -115,11 +129,11 @@ void MoldUDP64::request(SequenceNumber sequence_number) {
 
     std::uint8_t header[HEADER_LENGTH]{};
 
-    std::memcpy(header, session, SESSION_LENGTH);
+    std::memcpy(header, session.session, SESSION_LENGTH);
     write_big_endian<SequenceNumber>(header, SESSION_LENGTH, sequence_number);
     write_big_endian<MessageCount>(header, SESSION_LENGTH + sizeof(SequenceNumber), message_count);
 
-    messenger.send_datagram(header, HEADER_LENGTH);
+    messenger.SendDatagram(header, HEADER_LENGTH);
     last_request_sent = Clock::now();
 }
 

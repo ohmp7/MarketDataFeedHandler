@@ -1,4 +1,6 @@
 #pragma once
+
+#include "event.h"
 #include "udp_messenger.h"
 
 #include <chrono>
@@ -8,11 +10,24 @@
 #include <optional>
 #include <string>
 
-
-using Bytes = std::size_t;
-using MessageCount = std::uint16_t;
-using SequenceNumber = std::uint64_t;
 using Clock = std::chrono::steady_clock;
+
+struct PacketHeader {
+    char session[SESSION_LENGTH];
+    SequenceNumber sequence_number = 0;
+    MessageCount message_count = 0;
+    bool end_of_session = false;
+};
+
+struct MessageView {
+    const std::uint8_t* data{nullptr};
+    Bytes len{0};
+};
+
+struct Session {
+    char session[SESSION_LENGTH]{};
+    bool set = false;
+};
 
 class PacketTruncatedError : public std::exception {
 public:
@@ -21,32 +36,8 @@ public:
 private:
     std::string message_;
 };
-/*
-Handling Network-Byte-Order Integers.
-*/
-template <typename T>
-inline T read_big_endian(const std::uint8_t* buf,  Bytes offset) {
-    T converted = 0;
-    for (Bytes i = 0; i < sizeof(T); ++i) {
-        converted <<= 8;
-        std::uint8_t next_byte = buf[offset + i];
-        converted = converted | static_cast<T>(next_byte);
-    }
-    return converted;
-}
 
-template <typename T>
-inline void write_big_endian(std::uint8_t* buf, Bytes offset, T value) {
-    for (Bytes i = 0; i < sizeof(T); ++i) {
-        buf[offset + sizeof(T) - i - 1] = static_cast<uint8_t>(value & 0xFF);
-        value >>= 8;
-    }
-}
-
-struct MessageView {
-    const std::uint8_t* data{nullptr};
-    Bytes len{0};
-};
+PacketHeader ParsePacketHeader(const std::uint8_t* buf, Bytes len);
 
 /*
 Client Handler for MoldUDP64 Network Protocol, a lightweight protocol layer built on top of UDP.
@@ -60,6 +51,8 @@ public:
     */
     bool handle_packet(const std::uint8_t* buf, Bytes len);
 
+    void set_session(const char (&src_session)[SESSION_LENGTH]);
+
     MessageView message_view() const;
 
 private:
@@ -67,12 +60,6 @@ private:
 
     void read(const std::uint8_t* buf, Bytes len);
 
-    static constexpr Bytes SESSION_LENGTH = 10;
-    static constexpr Bytes HEADER_LENGTH = 20;
-    static constexpr Bytes MESSAGE_HEADER_LENGTH = 2;
-
-    static constexpr MessageCount END_SESSION = 0xFFFF;
-    static constexpr MessageCount MAX_MESSAGE_COUNT = END_SESSION - 1;
     static constexpr auto TIMEOUT = std::chrono::milliseconds(1000);
 
     // Recovery window upper bound (exclusive)
@@ -87,5 +74,5 @@ private:
     UdpMessenger messenger;
     MessageView msg{};
 
-    char session[SESSION_LENGTH]{};
+    Session session;
 };

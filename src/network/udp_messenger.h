@@ -2,8 +2,8 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <string>
 #include <netinet/in.h>
+#include <string>
 
 /*
 UDP Wrapper Class
@@ -15,11 +15,12 @@ public:
     UdpMessenger(int sockfd, const std::string& ip, std::uint16_t port);
 
     // Preventing Object Copy (sockfd corruption safeguard)
-    UdpMessenger(const UdpMessenger& temp) = delete;
-    UdpMessenger& operator=(const UdpMessenger& temp) = delete;
+    UdpMessenger(const UdpMessenger& other) = delete;
+    UdpMessenger& operator=(const UdpMessenger& other) = delete;
 
-    void send_datagram(const void* data, Bytes len) const;
-private:
-    int sockfd{-1};
-    sockaddr_in destaddr{};
+    void SendDatagram(const void* data, Bytes length) const;
+
+    private:
+    int sockfd_{-1};
+    sockaddr_in destaddr_{};
 };

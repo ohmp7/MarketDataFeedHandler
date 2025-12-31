@@ -6,20 +6,20 @@
 #include <unistd.h>
 #include <cstring>
 
-UdpMessenger::UdpMessenger(int sockfd_, const std::string& ip, std::uint16_t port) 
-    : sockfd(sockfd_) {
+UdpMessenger::UdpMessenger(int sockfd, const std::string& ip, std::uint16_t port) 
+    : sockfd_(sockfd) {
 
-    memset(&destaddr, 0, sizeof(destaddr));
-    destaddr.sin_family = AF_INET;
-    destaddr.sin_port = htons(port);
+    memset(&destaddr_, 0, sizeof(destaddr_));
+    destaddr_.sin_family = AF_INET;
+    destaddr_.sin_port = htons(port);
     
-    if (inet_pton(AF_INET, ip.c_str(), &destaddr.sin_addr) < 1) {
+    if (inet_pton(AF_INET, ip.c_str(), &destaddr_.sin_addr) < 1) {
         throw std::runtime_error("Error: failed to convert IPv4 address from text to binary form.");
     }
 }
 
-void UdpMessenger::send_datagram(const void* data, Bytes len) const {
-    ssize_t sent = sendto(sockfd, data, len, 0, reinterpret_cast<const sockaddr*>(&destaddr), sizeof(destaddr));
+void UdpMessenger::SendDatagram(const void* data, Bytes len) const {
+    ssize_t sent = sendto(sockfd_, data, len, 0, reinterpret_cast<const sockaddr*>(&destaddr_), sizeof(destaddr_));
     if (sent < 0 || static_cast<Bytes>(sent) != len) {
         throw std::runtime_error("Error: failed to transmit the message to the socket.");
     }

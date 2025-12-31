@@ -15,10 +15,12 @@ function(enable_warnings target)
 endfunction()
 
 #  Networking Library
-add_library(network_lib src/network/moldudp64_client.cpp src/network/udp_messenger.cpp)
+add_library(network_lib src/network/moldudp64.cpp src/network/udp_messenger.cpp)
 enable_warnings(network_lib)
 target_include_directories(network_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src/network)
-
+target_include_directories(network_lib PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/market
+)
 
 # Market Plant Executable
 add_executable(market_plant src/market/market_plant.cpp src/market/cli/market_cli.cpp)
@@ -33,6 +35,10 @@ target_link_libraries(market_plant PRIVATE network_lib)
 
 # Exchange Executable
 add_executable(exchange src/app/exchange.cpp)
+target_link_libraries(exchange PRIVATE network_lib)
+target_include_directories(exchange PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/market       
+)
 enable_warnings(exchange)
 
 

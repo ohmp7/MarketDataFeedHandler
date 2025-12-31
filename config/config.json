@@ -21,6 +21,13 @@
             "specifications" : {
                 "depth" : 5
             }
+        },
+        {
+            "instrument_id" : 3,
+            "symbol" : "AMZN",
+            "specifications" : {
+                "depth" : 15
+            }
         }
     ]
 } 
