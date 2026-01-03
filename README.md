@@ -49,8 +49,11 @@ Below is an example of the message payload utilized (Big-Endian/NBO). As mention
 
 > Note: for this simulator, each UDP datagram carries a single MoldUDP64 message, while preserving the MoldUDP64 Protocol and sequencing semantics.
 
-### **Exchange**
-high-level overview
+### **Exchange Simulator**
+
+The Exchange Simulator produces market movement for testing the Market Plant. It continuously generates randomized **L2 price-level events** (add level, remove level, update level) across instruments and sides, serializes each event into **MoldUDP64-framed UDP datagrams**, and sends them to the Market Plant over UDP unicast.
+
+To support gap recovery, the simulator also keeps a fixed-size **in-memory history buffer** keyed by sequence number. When it receives retransmission requests _(MoldUDP64 header containing a starting sequence number and message count)_, it re-enqueues the requested events and replays them back to the Market Plant.
 
 ### **Subscriber**
 high-level overview
