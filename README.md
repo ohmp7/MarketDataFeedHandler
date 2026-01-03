@@ -33,7 +33,7 @@ For Exchange → Plant communication, the simulator sends the feed over **UDP un
 **[`moldudp64_client.h`](./src/network/moldudp64_client.h)** implements a **MoldUDP64** client state machine that:
 - Parses the MoldUDP64 header (session, sequence number, message count) and tracks the active session.
 - Enforces **in-order processing** using _sequencing_, dropping late/duplicate datagrams.
-- Detects **sequence gaps** and enters recovery (cold-start backfill or mid-stream gapfill).
+- Detects **sequence gaps** and enters recovery state (either cold-start backfill or mid-stream gapfill).
 - **Retransmits requests** starting at the missing sequence number, throttled by a timeout and bounded by `MAX_MESSAGE_COUNT`.
 
 Below is an example of the message payload utilized (Big-Endian/NBO). As mentioned before, Each **[MoldUDP64](https://www.nasdaqtrader.com/content/technicalsupport/specifications/dataproducts/moldudp64.pdf)** message is encoded as: `msg_len (u16)` then `msg_len` bytes of payload. The offsets below are byte offsets from the start of the UDP datagram buffer.
