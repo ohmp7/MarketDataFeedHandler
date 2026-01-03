@@ -10,7 +10,7 @@ The motivation behind this project was to build a high-performance middleware se
 
 #### _What is a Market Data Feed Handler?_
 
-Market data feed handlers connect exchange feeds with internal trading systems, transforming raw data into digestible market data and streaming to downstream consumers at scale. They’re a core piece of market infrastructure and are designed to move high-volume, latency-sensitive data.
+A Market data feed handler connects exchange feeds with internal trading systems, turning raw data into digestible market data and streaming to downstream consumers at scale. They’re a crucial part of market infrastructure and are designed to move high-volume, latency-sensitive data.
 
 ## **Architecture**
 
