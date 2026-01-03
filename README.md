@@ -7,9 +7,8 @@ General Overview
 <img width="829" height="495" alt="MarketPlantDiagram" src="https://github.com/user-attachments/assets/73399350-64db-483a-91b3-3da1115c8652" />
 example
 
-### **Project Structure**
-
-example
+### **Market Feed Data Handler**
+high-level overview
 
 ### **Networking**
 high-level overview
@@ -19,3 +18,18 @@ example
 
 #### **UDP Unicast**
 example
+
+### **Exchange**
+high-level overview
+
+### **Subscriber**
+high-level overview
+
+## **Project Structure**
+high-level overview
+
+## **Usage**
+high-level overview
+
+## **Styling**
+high-level overview
