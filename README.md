@@ -6,7 +6,7 @@ This repository showcases a low-latency C++ market data feed handler simulator _
 - Builds and maintains an in-memory L2 price-level order book from exchange feed data.
 - Streams real-time deltas to subscribers via **server-side [gRPC](https://grpc.io/) streaming**.
 
-Market data feed handlers sit between exchange feeds and internal trading systems, transforming raw data into digestible market data and streaming to downstream consumers at scale. They’re a core piece of market infrastructure and are designed to move high-volume, latency-sensitive data.
+Market data feed handlers connect exchange feeds with internal trading systems, transforming raw data into digestible market data and streaming to downstream consumers at scale. They’re a core piece of market infrastructure and are designed to move high-volume, latency-sensitive data.
 
 The motivation behind this project was to build a high-performance middleware service that ingests exchange-style UDP feeds and efficiently scales to one-to-many subscribers.
 
