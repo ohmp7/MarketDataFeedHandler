@@ -19,7 +19,19 @@ high-level overview
 example
 
 #### **UDP Unicast**
-example
+
+Below is an example of the message payload utilized (big-endian / Network Byte Order). _Offsets are byte offsets from the start of the UDP datagram buffer._
+
+| Offset (bytes) | Field           | Size | Type | Example |
+|---:|---|---:|---|---|
+| 20–21 | `msg_len`        | 2  | `u16` | `22` (bytes after `msg_len`) |
+| 22–25 | `instrument_id`  | 4  | `u32` | `AAPL = 1` |
+| 26    | `side`           | 1  | `u8`  | `BID = 0`, `ASK = 1` |
+| 27    | `event`          | 1  | `u8`  | `ADD = 0`, `REDUCE = 1` |
+| 28–31 | `price`          | 4  | `u32` | `32` (USD) |
+| 32–35 | `quantity`       | 4  | `u32` | `5917` |
+| 36–43 | `exchange_ts`    | 8  | `u64` | `1234567891234567890` (ns) |
+
 
 ### **Exchange**
 high-level overview
