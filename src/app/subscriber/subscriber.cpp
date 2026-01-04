@@ -10,8 +10,8 @@ MarketDataSubscriber::MarketDataSubscriber(SubscriberConfig config)
 
 void MarketDataSubscriber::HandleEvent(const ms::OrderBookEventUpdate& event) {
     const auto& level = event.level();
-    Price price = level.price();
-    Quantity quantity = level.quantity();
+    const Price price = level.price();
+    const Quantity quantity = level.quantity();
 
     std::map<Price, Quantity, std::greater<Price>>* levels = nullptr;
     std::map<Price, Quantity, std::less<Price>>* asks_levels = nullptr;

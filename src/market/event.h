@@ -17,16 +17,17 @@ using SubscriberId = std::uint32_t;
 using Timestamp = std::uint64_t;
 
 enum class Side : std::uint8_t {
-    BID = 0,
-    ASK = 1
+  kBid = 0,
+  kAsk = 1,
 };
 
 enum class LevelEvent : std::uint8_t {
-    AddLevel = 0,
-    ModifyLevel = 1,
+  kAddLevel = 0,
+  kModifyLevel = 1,
 };
 
-/*           
+/*
+
 Message Payload (Network-Byte-Order / Big Endian)
 
 offset 20 - 21:     msg_len         (2 bytes, u16)        ex. 'msg_len' = 22 (bytes after 'msg_len')
@@ -39,17 +40,17 @@ offset 36 - 43:     exchange_ts     (8 bytes, u64)        ex. 123456789123456789
 
 */
 
-inline constexpr Bytes SESSION_LENGTH = 10;
-inline constexpr Bytes HEADER_LENGTH = 20;
-inline constexpr Bytes MESSAGE_COUNT = 1;
-inline constexpr Bytes PACKET_SIZE = 44;
-inline constexpr Bytes MESSAGE_HEADER_LENGTH = 2;
-inline constexpr Timestamp CANCELLATION_POLL_INTERVAL = 500;
+inline constexpr Bytes kSessionLength = 10;
+inline constexpr Bytes kHeaderLength = 20;
+inline constexpr Bytes kMessageCount = 1;
+inline constexpr Bytes kPacketSize = 44;
+inline constexpr Bytes kMessageHeaderLength = 2;
+inline constexpr Timestamp kCancellationPollInterval = 500;
 
-inline constexpr MessageCount END_SESSION = 0xFFFF;
-inline constexpr MessageCount MAX_MESSAGE_COUNT = END_SESSION - 1;
+inline constexpr MessageCount kEndSession = 0xFFFF;
+inline constexpr MessageCount kMaxMessageCount = kEndSession - 1;
 
-inline constexpr uint32_t MAX_EXCHANGE_EVENTS = 1000000;
+inline constexpr std::uint32_t kMaxExchangeEvents = 1000000;
 
 struct MarketEvent {
     InstrumentId instrument_id;
@@ -59,4 +60,3 @@ struct MarketEvent {
     Quantity quantity;
     Timestamp exchange_ts;
 };
-

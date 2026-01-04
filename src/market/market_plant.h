@@ -47,20 +47,20 @@ struct Identifier {
 };
 
 
-// on construction, queue should be initialization to n snapshots of the n instruements subscribed to
+// on construction, queue should be init to n snapshots of the n instruments subscribed to
 class Subscriber {
 public:
     Subscriber(const Identifier& subscriber, const ms::InstrumentIds& instruments);
 
-    bool Subscribe(const InstrumentId id);
+    bool Subscribe(InstrumentId id);
 
-    void Unsubscribe(const InstrumentId id);
+    void Unsubscribe(InstrumentId id);
 
     void Enqueue(const StreamResponsePtr& next);
 
-    StreamResponsePtr WaitDequeue(grpc::ServerContext* ctx);
+    StreamResponsePtr WaitDequeue(ServerContext* ctx);
 
-    const Identifier& get_subscriber() const { return subscriber_; }
+    const Identifier& subscriber() const { return subscriber_; }
 
 private:
     Identifier subscriber_;
@@ -80,13 +80,13 @@ private:
 // All subscription updates happen from the MarketPlantServer
 class OrderBook {
 public:
-    OrderBook(InstrumentId id, const Depth depth);
+    OrderBook(InstrumentId id, Depth depth);
     
     void PushEventToSubscribers(const MarketEvent& data);
 
     void InitializeSubscription(std::shared_ptr<Subscriber> subscriber);
     
-    void CancelSubscription(const SubscriberId id);
+    void CancelSubscription(SubscriberId id);
 private:
     void AddOrder(Side side, Price price, Quantity quantity);
         
@@ -95,13 +95,13 @@ private:
     void Snapshot(ms::SnapshotUpdate* snapshot);
 
     template <class Levels>
-    static void UpdateLevel(Levels &levels, Price price, Quantity quantity) {
+    static void UpdateLevel(Levels& levels, Price price, Quantity quantity) {
         auto [it, added] = levels.try_emplace(price, quantity);
         if (!added) it->second += quantity;
     }
     
     template <class Levels>
-    static void ModifyLevel(Levels &levels, typename Levels::iterator it, Quantity quantity) {
+    static void ModifyLevel(Levels& levels, typename Levels::iterator it, Quantity quantity) {
         if (quantity >= it->second) {
             levels.erase(it);
         } else {
@@ -123,9 +123,9 @@ class BookManager {
 public:
     explicit BookManager(const InstrumentConfig& instruments);
 
-    OrderBook& book(InstrumentId id);
+    OrderBook& Book(InstrumentId id);
 
-    const OrderBook& book(InstrumentId id) const;
+    const OrderBook& Book(InstrumentId id) const;
 
 private:
     std::unordered_map<InstrumentId, OrderBook> books_;
@@ -143,11 +143,11 @@ public:
     const OrderBook& GetOrderBook(InstrumentId id) const;
 
 private:
-    void handle_event(const MessageView &message);
+    void HandleEvent(const MessageView& message);
 
-    MarketEvent parse_event(const MessageView &message);
+    MarketEvent ParseEvent(const MessageView& message);
 
-    sockaddr_in construct_ipv4(const std::string& ip, std::uint16_t port);
+    sockaddr_in ConstructIpv4(const std::string& ip, std::uint16_t port);
 
     int sockfd_{-1};
     MoldUDP64 protocol_;
@@ -158,33 +158,15 @@ private:
 // handle all subscription and order
 class MarketPlantServer final : public ms::MarketPlantService::Service {
 public:
-    MarketPlantServer(BookManager& books);
+    explicit MarketPlantServer(BookManager& books);
 
     // Server-side streaming
-    grpc::Status StreamUpdates(grpc::ServerContext* context, const ms::Subscription* request, ::grpc::ServerWriter< ms::StreamResponse>* writer);
+    Status StreamUpdates(ServerContext* context, const ms::Subscription* request, ServerWriter< ms::StreamResponse>* writer) override;
 
     // Control-plane for modifying subscriptions
-    grpc::Status UpdateSubscriptions(grpc::ServerContext* context, const ms::UpdateSubscriptionRequest* request, ::google::protobuf::Empty* response);
+    Status UpdateSubscriptions(ServerContext* context, const ms::UpdateSubscriptionRequest* request, google::protobuf::Empty* response) override;
 
-    std::shared_ptr<Subscriber> AddSubscriber(const ms::InstrumentIds& subscriptions) {
-        std::shared_ptr<Subscriber> sub;
-
-        // add new id to subscribers_
-        Identifier subscriber = InitSubscriber();
-        sub = std::make_shared<Subscriber>(subscriber, subscriptions);
-        {
-            std::unique_lock<std::shared_mutex> lock(sub_lock_);
-            subscribers_[subscriber.subscriber_id] = sub;
-        }
-
-        // Initialize Subscriptions
-        for (auto& id : subscriptions.ids()) {
-            OrderBook& book = books_.book(id);
-            book.InitializeSubscription(sub);
-        }
-
-        return sub;
-    }
+    std::shared_ptr<Subscriber> AddSubscriber(const ms::InstrumentIds& subscriptions);
 
     void RemoveSubscriber(const SubscriberId id);
 
@@ -199,4 +181,3 @@ private:
     inline static std::shared_mutex sub_lock_;
     std::unordered_map<SubscriberId, std::weak_ptr<Subscriber>> subscribers_;
 };
-

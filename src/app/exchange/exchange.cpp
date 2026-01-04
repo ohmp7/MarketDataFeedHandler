@@ -1,5 +1,6 @@
-#include "endian.h"
 #include "exchange.h"
+
+#include "endian.h"
 #include "moldudp64.h"
 #include "udp_messenger.h"
 
@@ -17,13 +18,12 @@
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
-#include <sys/socket.h>
 #include <unistd.h>
 
 BookState::BookState() {
-    avail_prices.reserve(MAX_PRICE);
+    avail_prices.reserve(kMaxPrice);
 
-    for (int i = 1; i <= 100; ++i) {
+    for (int i = 1; i <= kMaxPrice; ++i) {
         avail_prices.push_back(static_cast<Price>(i));
     }
 }
@@ -31,12 +31,12 @@ BookState::BookState() {
 ExchangeSimulator::ExchangeSimulator()
     : sockfd_(socket(AF_INET, SOCK_DGRAM, 0)),
       config_(ExchangeConfig::New()),
-      generate_id(config_.min_instrument_id, config_.max_instrument_id),
-      generate_side(0, 1),
-      generate_event(1, 100),
-      generate_price(config_.min_price, config_.max_price),
-      generate_quantity(config_.min_quantity, config_.max_quantity),
-      generate_interval(config_.min_interval_ms, config_.max_interval_ms) {
+      generate_id_(config_.min_instrument_id, config_.max_instrument_id),
+      generate_side_(0, 1),
+      generate_event_(1, 100),
+      generate_price_(config_.min_price, config_.max_price),
+      generate_quantity_(config_.min_quantity, config_.max_quantity),
+      generate_interval_(config_.min_interval_ms, config_.max_interval_ms) {
 
     if (sockfd_ < 0) throw std::runtime_error("Error: socket creation to exchange failed.");
 
@@ -53,7 +53,7 @@ ExchangeSimulator::ExchangeSimulator()
 
     {
         std::lock_guard<std::mutex> lock(history_mutex_);
-        events_history_.resize(MAX_EXCHANGE_EVENTS);
+        events_history_.resize(kMaxExchangeEvents);
     }
 }
 
@@ -64,68 +64,68 @@ void ExchangeSimulator::SendDatagrams() {
 
         // wait for event
         std::unique_lock<std::mutex> lock(queue_mutex_);
-        while (events_queue.empty()) {
-            cv.wait(lock);
+        while (events_queue_.empty()) {
+            cv_.wait(lock);
         }
 
-        EventToSend next = events_queue.front(); 
-        events_queue.pop_front();
+        EventToSend next = events_queue_.front(); 
+        events_queue_.pop_front();
 
         lock.unlock();
 
-        std::uint8_t buf[PACKET_SIZE];
-        serialize_event(buf, next);
+        std::uint8_t buf[kPacketSize];
+        SerializeEvent(buf, next);
 
-        messenger.SendDatagram(buf, PACKET_SIZE);
+        messenger.SendDatagram(buf, kPacketSize);
     }
 }
 
 void ExchangeSimulator::GenerateMarketEvents() {
     while (true) {
-        const InstrumentId id = static_cast<InstrumentId>(generate_id(number_generator_));
-        const Side side = static_cast<Side>(generate_side(number_generator_));
-        BookState& book = get_book(id, side);
+        const InstrumentId id = static_cast<InstrumentId>(generate_id_(number_generator_));
+        const Side side = static_cast<Side>(generate_side_(number_generator_));
+        BookState& book = GetBook(id, side);
 
-        const bool add_level = book.levels.empty() || generate_event(number_generator_) <= config_.chance_of_add;
+        const bool add_level = book.levels.empty() || generate_event_(number_generator_) <= config_.chance_of_add;
         
         MarketEvent e{};
 
         if (add_level) {
             // update live state
-            const Quantity quantity = static_cast<Quantity>(generate_quantity(number_generator_));
+            const Quantity quantity = static_cast<Quantity>(generate_quantity_(number_generator_));
 
             // decide new price or existing price
-            const bool new_price = generate_event(number_generator_) <= config_.chance_of_new_price;
+            const bool new_price = generate_event_(number_generator_) <= config_.chance_of_new_price;
 
             Price price;
 
             if (book.levels.empty() || new_price) {
-                price = pick_new_price(book.avail_prices);
+                price = PickNewPrice(book.avail_prices);
                 book.levels[price] = quantity;
             } else {
-                auto it = pick_existing_price(book);
+                auto it = PickExistingPrice(book);
                 price = it->first;
                 book.levels[price] += quantity;
             }
             
             e.instrument_id = id;
             e.side = side;
-            e.event = LevelEvent::AddLevel;
+            e.event = LevelEvent::kAddLevel;
             e.price = price;
             e.quantity = quantity;
-            e.exchange_ts = current_time();
+            e.exchange_ts = CurrentTime();
             
         } else {
-            auto it = pick_existing_price(book);
+            auto it = PickExistingPrice(book);
             const Price price = it->first;
             const Quantity curr_quantity = it->second;
 
-            const bool delete_level = generate_event(number_generator_) <= config_.chance_of_delete;
+            const bool delete_level = generate_event_(number_generator_) <= config_.chance_of_delete;
             Quantity quantity_to_remove;
 
             if (delete_level) {
                 quantity_to_remove = curr_quantity;
-                release_price(book, price);
+                ReleasePrice(book, price);
             } else {
                 std::uniform_int_distribution<Quantity> generate_quantity_to_remove(1, curr_quantity - 1);
                 quantity_to_remove = generate_quantity_to_remove(number_generator_);
@@ -134,10 +134,10 @@ void ExchangeSimulator::GenerateMarketEvents() {
 
             e.instrument_id = id;
             e.side = side;
-            e.event = LevelEvent::ModifyLevel;
+            e.event = LevelEvent::kModifyLevel;
             e.price = price;
             e.quantity = quantity_to_remove;
-            e.exchange_ts = current_time();
+            e.exchange_ts = CurrentTime();
         }
         
         SequenceNumber seq;
@@ -147,9 +147,9 @@ void ExchangeSimulator::GenerateMarketEvents() {
             events_history_[seq] = e;
         }
 
-        enqueue_event(e, seq);
+        EnqueueEvent(e, seq);
         
-        Timestamp sleep = static_cast<Timestamp>(generate_interval(number_generator_));
+        Timestamp sleep = static_cast<Timestamp>(generate_interval_(number_generator_));
         std::this_thread::sleep_for(std::chrono::milliseconds(sleep));
     }
 }
@@ -157,9 +157,9 @@ void ExchangeSimulator::GenerateMarketEvents() {
 void ExchangeSimulator::Retransmitter() {
     PacketHeader header;
     while (true) {
-        uint8_t buf[HEADER_LENGTH];
+        std::uint8_t buf[kHeaderLength];
         
-        ssize_t bytes_received = recvfrom(sockfd_, buf, HEADER_LENGTH, 0, nullptr, nullptr);
+        ssize_t bytes_received = recvfrom(sockfd_, buf, kHeaderLength, 0, nullptr, nullptr);
         if (bytes_received <= 0) continue;
 
         try {
@@ -169,25 +169,25 @@ void ExchangeSimulator::Retransmitter() {
             continue;
         }
 
-        if (std::memcmp(header.session, session, SESSION_LENGTH) == 0) {
+        if (std::memcmp(header.session, session_, kSessionLength) == 0) {
             for (MessageCount i = 0; i < header.message_count; ++i) {
                 std::lock_guard<std::mutex> lock(history_mutex_);
 
                 const SequenceNumber seq = header.sequence_number + i;
                 if (seq >= sequence_number_) break;
-                enqueue_event(events_history_[seq], seq);
+                EnqueueEvent(events_history_[seq], seq);
             }
         }
     }
 }
 
-void ExchangeSimulator::enqueue_event(const MarketEvent& e, const SequenceNumber sequence_number) {
+void ExchangeSimulator::EnqueueEvent(const MarketEvent& e, const SequenceNumber sequence_number) {
     std::lock_guard<std::mutex> lock(queue_mutex_);
-    events_queue.push_back(EventToSend{e, sequence_number});
-    cv.notify_one();
+    events_queue_.push_back(EventToSend{e, sequence_number});
+    cv_.notify_one();
 }
 
-Price ExchangeSimulator::pick_new_price(std::vector<Price>& avail_prices) {
+Price ExchangeSimulator::PickNewPrice(std::vector<Price>& avail_prices) {
     std::uniform_int_distribution<std::size_t> generate_idx(0, avail_prices.size() - 1);
     std::size_t i = generate_idx(number_generator_);
 
@@ -197,7 +197,7 @@ Price ExchangeSimulator::pick_new_price(std::vector<Price>& avail_prices) {
     return p;
 }
 
-std::unordered_map<Price, Quantity>::iterator ExchangeSimulator::pick_existing_price(BookState& book) {
+std::unordered_map<Price, Quantity>::iterator ExchangeSimulator::PickExistingPrice(BookState& book) {
     std::uniform_int_distribution<std::size_t> generate_it(0, book.levels.size() - 1);
     std::size_t skip = generate_it(number_generator_);
 
@@ -206,62 +206,62 @@ std::unordered_map<Price, Quantity>::iterator ExchangeSimulator::pick_existing_p
     return it;
 }
     
-void ExchangeSimulator::release_price(BookState& book, const Price price_to_release) {
+void ExchangeSimulator::ReleasePrice(BookState& book, Price price_to_release) {
     book.levels.erase(price_to_release);
     book.avail_prices.push_back(price_to_release);
 }
 
-void ExchangeSimulator::serialize_event(std::uint8_t* buf, const EventToSend& next) {
+void ExchangeSimulator::SerializeEvent(std::uint8_t* buf, const EventToSend& next) {
     const MarketEvent& event = next.event;
-    Bytes offset = write_moldudp64_header(buf, next.sequence_number);
+    Bytes offset = WriteMoldUDP64Header(buf, next.sequence_number);
 
-    write_big_endian<InstrumentId>(buf, offset, event.instrument_id);
+    WriteBigEndian<InstrumentId>(buf, offset, event.instrument_id);
     offset += sizeof(InstrumentId);
 
-    write_big_endian<uint8_t>(buf, offset, static_cast<uint8_t>(event.side));
+    WriteBigEndian<uint8_t>(buf, offset, static_cast<uint8_t>(event.side));
     offset += sizeof(Side);
 
-    write_big_endian<uint8_t>(buf, offset, static_cast<uint8_t>(event.event));
+    WriteBigEndian<uint8_t>(buf, offset, static_cast<uint8_t>(event.event));
     offset += sizeof(event.event);
 
-    write_big_endian<Price>(buf, offset, event.price);
+    WriteBigEndian<Price>(buf, offset, event.price);
     offset += sizeof(Price);
 
-    write_big_endian<Quantity>(buf, offset, event.quantity);
+    WriteBigEndian<Quantity>(buf, offset, event.quantity);
     offset += sizeof(Quantity);
 
-    write_big_endian<Timestamp>(buf, offset, event.exchange_ts);
+    WriteBigEndian<Timestamp>(buf, offset, event.exchange_ts);
     
 }
 
-Bytes ExchangeSimulator::write_moldudp64_header(std::uint8_t* buf, SequenceNumber sequence_number) {
+Bytes ExchangeSimulator::WriteMoldUDP64Header(std::uint8_t* buf, SequenceNumber sequence_number) {
     Bytes offset = 0;
 
-    std::memcpy(buf, session, SESSION_LENGTH);
-    offset += SESSION_LENGTH;
+    std::memcpy(buf, session_, kSessionLength);
+    offset += kSessionLength;
 
-    write_big_endian<SequenceNumber>(buf, offset, sequence_number);
+    WriteBigEndian<SequenceNumber>(buf, offset, sequence_number);
     offset += sizeof(SequenceNumber);
 
-    write_big_endian<MessageCount>(buf, offset, MESSAGE_COUNT);
+    WriteBigEndian<MessageCount>(buf, offset, kMessageCount);
     offset += sizeof(MessageCount);
 
-    const Bytes remaining = PACKET_SIZE - (offset + sizeof(MessageDataSize));
-    write_big_endian<MessageDataSize>(buf, offset, static_cast<MessageDataSize>(remaining));
+    const Bytes remaining = kPacketSize - (offset + sizeof(MessageDataSize));
+    WriteBigEndian<MessageDataSize>(buf, offset, static_cast<MessageDataSize>(remaining));
 
     offset += sizeof(MessageDataSize);
 
     return offset;
 }
 
-Timestamp ExchangeSimulator::current_time() {
+Timestamp ExchangeSimulator::CurrentTime() {
     return static_cast<Timestamp>(
         std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()
     );
 }
 
-BookState& ExchangeSimulator::get_book(InstrumentId id, Side side) {
-    if (side == Side::BID) return books_[id].bids;
+BookState& ExchangeSimulator::GetBook(InstrumentId id, Side side) {
+    if (side == Side::kBid) return books_[id].bids;
     else return books_[id].asks;
 }
 

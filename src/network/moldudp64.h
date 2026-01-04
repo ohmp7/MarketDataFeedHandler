@@ -13,7 +13,7 @@
 using Clock = std::chrono::steady_clock;
 
 struct PacketHeader {
-    char session[SESSION_LENGTH];
+    char session[kSessionLength];
     SequenceNumber sequence_number = 0;
     MessageCount message_count = 0;
     bool end_of_session = false;
@@ -25,7 +25,7 @@ struct MessageView {
 };
 
 struct Session {
-    char session[SESSION_LENGTH]{};
+    char session[kSessionLength]{};
     bool set = false;
 };
 
@@ -44,35 +44,35 @@ Client Handler for MoldUDP64 Network Protocol, a lightweight protocol layer buil
 */
 class MoldUDP64 {
 public:
-    MoldUDP64(SequenceNumber request_sequence_num_, int sockfd, const std::string& ip, std::uint16_t port);
+    MoldUDP64(SequenceNumber request_sequence_num, int sockfd, const std::string& ip, std::uint16_t port);
 
     /*
     Returns true if the packet is in-order and contains a complete message; false otherwise.
     */
-    bool handle_packet(const std::uint8_t* buf, Bytes len);
+    bool HandlePacket(const std::uint8_t* buf, Bytes len);
 
-    void set_session(const char (&src_session)[SESSION_LENGTH]);
+    void SetSession(const char (&src_session)[kSessionLength]);
 
     MessageView message_view() const;
 
 private:
-    void request(SequenceNumber sequence_number);
+    void Request(SequenceNumber sequence_number);
 
-    void read(const std::uint8_t* buf, Bytes len);
+    void Read(const std::uint8_t* buf, Bytes len);
 
-    static constexpr auto TIMEOUT = std::chrono::milliseconds(1000);
+    static constexpr auto kTimeout = std::chrono::milliseconds(1000);
 
     // Recovery window upper bound (exclusive)
     // State Helpers: std::nullopt = uninitialized ; 0 = synchronized, > 0 = recovery mode
-    static constexpr SequenceNumber SYNCHRONIZED = 0;
-    std::optional<SequenceNumber> request_until_sequence_num =  std::nullopt;
+    static constexpr SequenceNumber kSynchronized = 0;
+    std::optional<SequenceNumber> request_until_sequence_num_ =  std::nullopt;
 
     // next sequence number in order
-    SequenceNumber next_expected_sequence_num;
+    SequenceNumber next_expected_sequence_num_;
 
-    Clock::time_point last_request_sent{};
-    UdpMessenger messenger;
-    MessageView msg{};
+    Clock::time_point last_request_sent_{};
+    UdpMessenger messenger_;
+    MessageView message_view_{};
 
-    Session session;
+    Session session_;
 };

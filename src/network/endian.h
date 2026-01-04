@@ -10,7 +10,7 @@
 Handling Network-Byte-Order Integers.
 */
 template <typename T>
-inline T read_big_endian(const std::uint8_t* buf,  Bytes offset) {
+inline T ReadBigEndian(const std::uint8_t* buf,  Bytes offset) {
     T converted = 0;
     for (Bytes i = 0; i < sizeof(T); ++i) {
         converted <<= 8;
@@ -21,7 +21,7 @@ inline T read_big_endian(const std::uint8_t* buf,  Bytes offset) {
 }
 
 template <typename T>
-inline void write_big_endian(std::uint8_t* buf, Bytes offset, T value) {
+inline void WriteBigEndian(std::uint8_t* buf, Bytes offset, T value) {
     for (Bytes i = 0; i < sizeof(T); ++i) {
         buf[offset + sizeof(T) - i - 1] = static_cast<uint8_t>(value & 0xFF);
         if constexpr (sizeof(T) > 1) value >>= 8;

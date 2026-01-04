@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <string>
 
-void print_help() {
+void PrintHelp() {
     std::cout
         << "Usage:\n" 
         << "  market_plant -c <config_file_path>\n"
@@ -19,7 +19,7 @@ void print_help() {
         << "  -h, --help     Provide Market Plant CLI information\n";
 }
 
-static void parse_config(const char* path, Config& out) {
+static void ParseConfig(const char* path, MarketPlantCliConfig& out) {
     std::ifstream config(path);
 
     if (!config.is_open()) {
@@ -42,7 +42,7 @@ static void parse_config(const char* path, Config& out) {
     }
 }
 
-bool parse_args(int argc, char* argv[], Config& out) {
+bool parse_args(int argc, char* argv[], MarketPlantCliConfig& out) {
     if (argc <= 1) throw std::runtime_error("insufficient options provided.");
     int config_file_idx = -1;
     
@@ -50,7 +50,7 @@ bool parse_args(int argc, char* argv[], Config& out) {
         std::string option = argv[i];
 
         if (option == "-h" || option == "--help") {
-            print_help();
+            PrintHelp();
             return false;
         } else if (option == "-c" || option == "--config") {
             if (i + 1 < argc) {
@@ -64,6 +64,6 @@ bool parse_args(int argc, char* argv[], Config& out) {
         }
     }
     
-    if (config_file_idx != -1) parse_config(argv[config_file_idx], out);
+    if (config_file_idx != -1) ParseConfig(argv[config_file_idx], out);
     return true;
 }

@@ -21,7 +21,7 @@ std::string SessionGenerator::Generate() {
     return session_key;
 };
 
-OrderBook::OrderBook(InstrumentId id, const Depth depth) : id_(id), depth_(depth) {}
+OrderBook::OrderBook(InstrumentId id, Depth depth) : id_(id), depth_(depth) {}
     
 void OrderBook::PushEventToSubscribers(const MarketEvent& data) {
     std::vector<std::shared_ptr<Subscriber>> to_enqueue;
@@ -29,7 +29,7 @@ void OrderBook::PushEventToSubscribers(const MarketEvent& data) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         
-        if (data.event == LevelEvent::AddLevel) { 
+        if (data.event == LevelEvent::kAddLevel) { 
             AddOrder(data.side, data.price, data.quantity);
         } else { 
             RemoveOrder(data.side, data.price, data.quantity);
@@ -54,7 +54,7 @@ void OrderBook::PushEventToSubscribers(const MarketEvent& data) {
 }
 
 void OrderBook::AddOrder(Side side, Price price, Quantity quantity) {
-    if (side == Side::BID) {
+    if (side == Side::kBid) {
         UpdateLevel(bids_, price, quantity);
     } else {
         UpdateLevel(asks_, price, quantity);
@@ -62,7 +62,7 @@ void OrderBook::AddOrder(Side side, Price price, Quantity quantity) {
 }
 
 void OrderBook::RemoveOrder(Side side, Price price, Quantity quantity) {
-    if (side == Side::BID) {
+    if (side == Side::kBid) {
         auto it = bids_.find(price);
         if (it == bids_.end()) return;
         ModifyLevel(bids_, it, quantity);
@@ -79,7 +79,7 @@ void OrderBook::InitializeSubscription(std::shared_ptr<Subscriber> subscriber) {
     std::lock_guard<std::mutex> lock(mutex_);
     
     // Add Subscriber to subscriptions_
-    subscriptions_[subscriber->get_subscriber().subscriber_id] = subscriber;
+    subscriptions_[subscriber->subscriber().subscriber_id] = subscriber;
     
     // Add snapshot to subscriber's queue
     auto* update = snapshot_response->mutable_update();
@@ -87,10 +87,10 @@ void OrderBook::InitializeSubscription(std::shared_ptr<Subscriber> subscriber) {
     Snapshot(update->mutable_snapshot());
 
     subscriber->Enqueue(snapshot_response);
-    // This way, any new feed for this instruement is blocked until we get the snapshot in
+    // This way, any new feed for this instrument is blocked until we get the snapshot in
 }
 
-void OrderBook::CancelSubscription(const SubscriberId id) {
+void OrderBook::CancelSubscription(SubscriberId id) {
     std::lock_guard<std::mutex> lock(mutex_);
     subscriptions_.erase(id);
 }
@@ -131,7 +131,7 @@ BookManager::BookManager(const InstrumentConfig& instruments) {
     }
 }
 
-OrderBook& BookManager::book(InstrumentId id) {
+OrderBook& BookManager::Book(InstrumentId id) {
     auto it = books_.find(id);
     if (it == books_.end()) {
         throw std::runtime_error("Error: unknown instrument id " + std::to_string(id));
@@ -139,7 +139,7 @@ OrderBook& BookManager::book(InstrumentId id) {
     return it->second;
 }
 
-const OrderBook& BookManager::book(InstrumentId id) const {
+const OrderBook& BookManager::Book(InstrumentId id) const {
     auto it = books_.find(id);
     if (it == books_.end()) {
         throw std::runtime_error("Error: unknown instrument id " + std::to_string(id));
@@ -156,13 +156,13 @@ ExchangeFeed::ExchangeFeed(BookManager& books, const MarketPlantConfig& mp_confi
     if (sockfd_ < 0) throw std::runtime_error("Error: socket creation to exchange failed.");
     
     // MARKET
-    sockaddr_in plantaddr = construct_ipv4(mp_config.market_ip, mp_config.market_port);
+    sockaddr_in plantaddr = ConstructIpv4(mp_config.market_ip, mp_config.market_port);
     if (bind(sockfd_, reinterpret_cast<sockaddr*>(&plantaddr), sizeof(plantaddr)) < 0) {
         throw std::runtime_error("Error: bind failed.");
     }
 
     // EXCHANGE
-    sockaddr_in exaddr = construct_ipv4(mp_config.exchange_ip, mp_config.exchange_port);
+    sockaddr_in exaddr = ConstructIpv4(mp_config.exchange_ip, mp_config.exchange_port);
     if (connect(sockfd_, reinterpret_cast<sockaddr*>(&exaddr), sizeof(exaddr)) < 0) {
         throw std::runtime_error("udp connect failed");
     }
@@ -180,9 +180,9 @@ void ExchangeFeed::ConnectToExchange() {
         if (n <= 0) continue;
         
         try {
-            if (protocol_.handle_packet(buf, static_cast<Bytes>(n))) {
+            if (protocol_.HandlePacket(buf, static_cast<Bytes>(n))) {
                 auto message = protocol_.message_view();
-                handle_event(message);
+                HandleEvent(message);
             }
         } catch (const PacketTruncatedError& e) {
             std::cerr << e.what() << "\n";
@@ -191,31 +191,31 @@ void ExchangeFeed::ConnectToExchange() {
 }
 
 const OrderBook& ExchangeFeed::GetOrderBook(InstrumentId id) const {
-    return books_.book(id);
+    return books_.Book(id);
 }   
 
-void ExchangeFeed::handle_event(const MessageView &message) {
-    MarketEvent e = parse_event(message);
-    books_.book(e.instrument_id).PushEventToSubscribers(e);
+void ExchangeFeed::HandleEvent(const MessageView& message) {
+    MarketEvent e = ParseEvent(message);
+    books_.Book(e.instrument_id).PushEventToSubscribers(e);
 }
 
-MarketEvent ExchangeFeed::parse_event(const MessageView &message) {
+MarketEvent ExchangeFeed::ParseEvent(const MessageView& message) {
     const std::uint8_t* p = message.data;
     Bytes off = 0;
 
     MarketEvent m_event{};
 
-    m_event.instrument_id = read_big_endian<InstrumentId>(p, off); off += sizeof(InstrumentId);
+    m_event.instrument_id = ReadBigEndian<InstrumentId>(p, off); off += sizeof(InstrumentId);
     m_event.side = static_cast<Side>(p[off++]);
     m_event.event = static_cast<LevelEvent>(p[off++]);
-    m_event.price = read_big_endian<Price>(p, off); off += sizeof(Price);
-    m_event.quantity = read_big_endian<Quantity>(p, off); off += sizeof(Quantity);
-    m_event.exchange_ts = read_big_endian<Timestamp>(p, off); off += sizeof(Timestamp);
+    m_event.price = ReadBigEndian<Price>(p, off); off += sizeof(Price);
+    m_event.quantity = ReadBigEndian<Quantity>(p, off); off += sizeof(Quantity);
+    m_event.exchange_ts = ReadBigEndian<Timestamp>(p, off); off += sizeof(Timestamp);
 
     return m_event;
 }
 
-sockaddr_in ExchangeFeed::construct_ipv4(const std::string& ip, std::uint16_t port) {
+sockaddr_in ExchangeFeed::ConstructIpv4(const std::string& ip, std::uint16_t port) {
     sockaddr_in res{};
     res.sin_family = AF_INET;
     res.sin_port = htons(port);
@@ -236,7 +236,7 @@ Subscriber::Subscriber(const Identifier& subscriber, const ms::InstrumentIds& in
     }
 }
 
-bool Subscriber::Subscribe(const InstrumentId id) {
+bool Subscriber::Subscribe(InstrumentId id) {
     // If not in unordered_set, Add to unordered_set
     std::lock_guard<std::mutex> lock(mutex_);
     if (subscribed_to_.find(id) == subscribed_to_.end()) {
@@ -246,7 +246,7 @@ bool Subscriber::Subscribe(const InstrumentId id) {
     return false;
 }
 
-void Subscriber::Unsubscribe(const InstrumentId id) {
+void Subscriber::Unsubscribe(InstrumentId id) {
     // If in unordered_set, remove from unordered_set.
     std::lock_guard<std::mutex> lock(mutex_);
     if (subscribed_to_.find(id) != subscribed_to_.end()) {
@@ -262,7 +262,7 @@ void Subscriber::Enqueue(const StreamResponsePtr& next) {
     if (updates_.size() == 1) cv_.notify_one();
 }
 
-StreamResponsePtr Subscriber::WaitDequeue(grpc::ServerContext* ctx) {
+StreamResponsePtr Subscriber::WaitDequeue(ServerContext* ctx) {
     std::unique_lock<std::mutex> lock(mutex_);
 
     // If:
@@ -273,7 +273,7 @@ StreamResponsePtr Subscriber::WaitDequeue(grpc::ServerContext* ctx) {
     // -> Go to sleep
 
     while (updates_.empty() && !(ctx && ctx->IsCancelled()) && !subscribed_to_.empty()) {
-        cv_.wait_for(lock, std::chrono::milliseconds(CANCELLATION_POLL_INTERVAL)); 
+        cv_.wait_for(lock, std::chrono::milliseconds(kCancellationPollInterval)); 
     }
 
     if ((ctx && ctx->IsCancelled()) || subscribed_to_.empty()) return nullptr;
@@ -288,14 +288,14 @@ StreamResponsePtr Subscriber::WaitDequeue(grpc::ServerContext* ctx) {
 
 MarketPlantServer::MarketPlantServer(BookManager& books) : books_(books) {}
 
-grpc::Status MarketPlantServer::StreamUpdates(grpc::ServerContext* context, const ms::Subscription* request, ::grpc::ServerWriter< ms::StreamResponse>* writer) {
+Status MarketPlantServer::StreamUpdates(ServerContext* context, const ms::Subscription* request, ServerWriter< ms::StreamResponse>* writer) {
     // NOTE: on first call, it is a new subscribe
     if (!request || !request->has_subscribe()) {
-        return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "Error: invalid request.");
+        return Status(grpc::StatusCode::INVALID_ARGUMENT, "Error: invalid request.");
     }
 
     std::shared_ptr<Subscriber> subscriber = this->AddSubscriber(request->subscribe());
-    auto [id, session_key] = subscriber->get_subscriber();
+    const auto& [id, session_key] = subscriber->subscriber();
 
     // Send session_key and subscriber_id first
     ms::StreamResponse init_response;
@@ -311,10 +311,10 @@ grpc::Status MarketPlantServer::StreamUpdates(grpc::ServerContext* context, cons
     }
     
     RemoveSubscriber(id);
-    return grpc::Status::OK;
+    return Status::OK;
 }
 
-grpc::Status MarketPlantServer::UpdateSubscriptions(grpc::ServerContext* context, const ms::UpdateSubscriptionRequest* request, ::google::protobuf::Empty* response) {
+Status MarketPlantServer::UpdateSubscriptions(ServerContext* context, const ms::UpdateSubscriptionRequest* request, ::google::protobuf::Empty* response) {
     (void)context;
     (void)response;
 
@@ -327,7 +327,7 @@ grpc::Status MarketPlantServer::UpdateSubscriptions(grpc::ServerContext* context
         std::shared_lock<std::shared_mutex> lock(sub_lock_);
         auto it = subscribers_.find(subscriber_id);
         if (it == subscribers_.end()) {
-            return grpc::Status(grpc::StatusCode::NOT_FOUND, "Error: unknown subscriber_id.");
+            return Status(grpc::StatusCode::NOT_FOUND, "Error: unknown subscriber_id.");
         }
         subscriber = it->second.lock();
     }
@@ -338,9 +338,9 @@ grpc::Status MarketPlantServer::UpdateSubscriptions(grpc::ServerContext* context
         if (it != subscribers_.end() && it->second.expired()) {
             subscribers_.erase(it);
         }
-        return grpc::Status(grpc::StatusCode::NOT_FOUND, "Error: subscriber expired.");
-    } else if (subscriber->get_subscriber().session_key != session_id) {
-        return grpc::Status(grpc::StatusCode::PERMISSION_DENIED, "Error: invalid session_id.");
+        return Status(grpc::StatusCode::NOT_FOUND, "Error: subscriber expired.");
+    } else if (subscriber->subscriber().session_key != session_id) {
+        return Status(grpc::StatusCode::PERMISSION_DENIED, "Error: invalid session_id.");
     }
 
     const ms::Subscription& change = request->change();
@@ -352,9 +352,9 @@ grpc::Status MarketPlantServer::UpdateSubscriptions(grpc::ServerContext* context
             OrderBook* book = nullptr;
             // filter for valid instruments
             try {
-                book = &books_.book(instrument_id);
+                book = &books_.Book(instrument_id);
             } catch (const std::exception& e) {
-                return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, e.what());
+                return Status(grpc::StatusCode::INVALID_ARGUMENT, e.what());
             }
 
             // Only initialize subscription and queue snapshot if new subscription
@@ -365,15 +365,35 @@ grpc::Status MarketPlantServer::UpdateSubscriptions(grpc::ServerContext* context
         for (auto instrument_id : ids.ids()) {
             // Filter for valid instruments
             try {
-                books_.book(instrument_id).CancelSubscription(subscriber_id);
+                books_.Book(instrument_id).CancelSubscription(subscriber_id);
             } catch (const std::exception& e) {
-                return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, e.what());
+                return Status(grpc::StatusCode::INVALID_ARGUMENT, e.what());
             }
 
             subscriber->Unsubscribe(instrument_id);
         }
     }
-    return grpc::Status::OK;
+    return Status::OK;
+}
+
+std::shared_ptr<Subscriber> MarketPlantServer::AddSubscriber(const ms::InstrumentIds& subscriptions) {
+    std::shared_ptr<Subscriber> sub;
+
+    // add new id to subscribers_
+    Identifier subscriber = InitSubscriber();
+    sub = std::make_shared<Subscriber>(subscriber, subscriptions);
+    {
+        std::unique_lock<std::shared_mutex> lock(sub_lock_);
+        subscribers_[subscriber.subscriber_id] = sub;
+    }
+
+    // Initialize Subscriptions
+    for (auto& id : subscriptions.ids()) {
+        OrderBook& book = books_.Book(id);
+        book.InitializeSubscription(sub);
+    }
+
+    return sub;
 }
 
 void MarketPlantServer::RemoveSubscriber(const SubscriberId id) {
@@ -391,16 +411,16 @@ StreamResponsePtr MarketPlantServer::ConstructEventUpdate(const MarketEvent& e) 
 
     // Map event -> proto type
     switch (e.event) {
-        case LevelEvent::AddLevel: curr->set_type(ms::ADD_LEVEL); break;
-        case LevelEvent::ModifyLevel: curr->set_type(ms::REDUCE_LEVEL); break;
+        case LevelEvent::kAddLevel: curr->set_type(ms::ADD_LEVEL); break;
+        case LevelEvent::kModifyLevel: curr->set_type(ms::REDUCE_LEVEL); break;
         default: curr->set_type(ms::EVENT_UNSPECIFIED); break;
     }
 
     auto* level = curr->mutable_level();
 
     switch (e.side) {
-        case Side::BID: level->set_side(ms::BID); break;
-        case Side::ASK: level->set_side(ms::ASK); break;
+        case Side::kBid: level->set_side(ms::BID); break;
+        case Side::kAsk: level->set_side(ms::ASK); break;
         default: level->set_side(ms::SIDE_UNSPECIFIED); break;
     }
 
@@ -419,13 +439,13 @@ Identifier MarketPlantServer::InitSubscriber() {
 }
 
 int main(int argc, char* argv[]) {
-    Config conf{};
+    MarketPlantCliConfig conf{};
 
     try {
-        if (!parse_args(argc, argv, conf)) return 0;
+        if (!ParseArgs(argc, argv, conf)) return 0;
     } catch (const std::runtime_error& e) {
         std::cerr << "Error: " << e.what() << "\n\n";
-        print_help();
+        PrintHelp();
         return 1;
     }
 
@@ -433,8 +453,9 @@ int main(int argc, char* argv[]) {
     BookManager manager(conf.instruments);
 
     // connect to exchange
-    ExchangeFeed feed(manager, mp_config);
-    std::thread exchange_feed([&]{ feed.ConnectToExchange(); });
+    auto feed = std::make_shared<ExchangeFeed>(manager, mp_config);
+    std::thread exchange_feed([feed]{ feed->ConnectToExchange(); });
+    exchange_feed.detach();
 
     // gRPC server runs on main thread
     MarketPlantServer service(manager);

@@ -1,8 +1,8 @@
+// market_cli.h
 #pragma once
 
 #include "event.h"
 
-#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -13,11 +13,11 @@ struct Instrument {
 
 using InstrumentConfig = std::vector<Instrument>;
 
-struct Config {
+struct MarketPlantCliConfig {
     InstrumentConfig instruments;
 };
 
-void print_help();
+void PrintHelp();
 
 // Returns false if user asked for help; otherwise parses config in `out` and returns true.
-bool parse_args(int argc, char* argv[], Config& out);
+bool ParseArgs(int argc, char* argv[], MarketPlantCliConfig& out);

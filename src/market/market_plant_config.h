@@ -4,12 +4,12 @@
 #include <cstdint>
 #include <cstdlib>
 
-inline std::string get_env(const std::string &key, const std::string &default_value) {
+inline std::string get_env(const std::string& key, const std::string& default_value) {
     const char* value = std::getenv(key.c_str());
     return value ? std::string(value) : default_value;
 }
 
-inline int get_env_int(const std::string &key, int default_value) {
+inline int get_env_int(const std::string& key, int default_value) {
     const char* value = std::getenv(key.c_str());
     return value ? std::atoi(value) : default_value;
 }
