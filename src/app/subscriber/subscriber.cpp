@@ -1,113 +1,103 @@
-#include <grpcpp/grpcpp.h>
+#include "subscriber.h"
 #include <iostream>
 #include <iomanip>
-#include <map>
-#include <string>
 
-#include "event.h"
-#include "market_plant/market_plant.grpc.pb.h"
-#include "market_plant/market_plant.pb.h"
+MarketDataSubscriber::MarketDataSubscriber(SubscriberConfig config)
+    : config_(std::move(config))
+{
+    auto channel = grpc::CreateChannel(
+        config_.GetAddress(), 
+        grpc::InsecureChannelCredentials()
+    );
+    stub_ = ms::MarketPlantService::NewStub(channel);
+}
 
-namespace ms = market_plant::v1;
-
-struct LocalOrderBookCopy {
-    std::map<Price, Quantity, std::greater<Price>> bids;
-    std::map<Price, Quantity, std::less<Price>> asks;
-};
-
-static void HandleEvent(LocalOrderBookCopy& book, const ms::OrderBookEventUpdate& event) {
+void MarketDataSubscriber::HandleEvent(const ms::OrderBookEventUpdate& event) {
     const auto& level = event.level();
     Price price = level.price();
     Quantity quantity = level.quantity();
 
+    std::map<Price, Quantity, std::greater<Price>>* levels = nullptr;
+    std::map<Price, Quantity, std::less<Price>>* asks_levels = nullptr;
+    
     if (level.side() == ms::BID) {
-        auto& levels = book.bids;
-
-        switch (event.type()) {
-            case ms::ADD_LEVEL: levels[price] += quantity; break;
-            case ms::REDUCE_LEVEL:
-                if (quantity == levels[price]) levels.erase(price);
-                else levels[price] -= quantity;
-                break;
-            default: break;
-        }
+        levels = &book_.bids;
     } else if (level.side() == ms::ASK) {
-        auto& levels = book.asks;
+        asks_levels = &book_.asks;
+    } else {
+        return;
+    }
 
-        switch (event.type()) {
-            case ms::ADD_LEVEL: levels[price] += quantity; break;
-            case ms::REDUCE_LEVEL:
-                if (quantity == levels[price]) levels.erase(price);
-                else levels[price] -= quantity;
-                break;
-            default: break;
-        }
+    switch (event.type()) {
+        case ms::ADD_LEVEL:
+            if (levels) (*levels)[price] += quantity;
+            else if (asks_levels) (*asks_levels)[price] += quantity;
+            break;
+            
+        case ms::REDUCE_LEVEL:
+            if (levels) {
+                if (quantity == (*levels)[price]) levels->erase(price);
+                else (*levels)[price] -= quantity;
+            } else if (asks_levels) {
+                if (quantity == (*asks_levels)[price]) asks_levels->erase(price);
+                else (*asks_levels)[price] -= quantity;
+            }
+            break;
+            
+        default: 
+            break;
     }
 }
 
-static void HandleSnapshot(LocalOrderBookCopy& book, const ms::SnapshotUpdate& snapshot) {
-    book.bids.clear();
-    book.asks.clear();
-
-    for (const auto& event : snapshot.bids()) HandleEvent(book, event);
-    for (const auto& event : snapshot.asks()) HandleEvent(book, event);
+void MarketDataSubscriber::HandleSnapshot(const ms::SnapshotUpdate& snapshot) {
+    book_.bids.clear();
+    book_.asks.clear();
+    for (const auto& event : snapshot.bids()) HandleEvent(event);
+    for (const auto& event : snapshot.asks()) HandleEvent(event);
 }
 
-static void PrintBookState(const LocalOrderBookCopy& book, std::size_t depth) {
+void MarketDataSubscriber::PrintBookState() {
     std::cout << "\033[2J\033[H";
 
     std::cout << "   BIDS (Price | Qty)       |   ASKS (Price | Qty)\n";
     std::cout << "----------------------------+-----------------------------\n";
 
+    auto bid_it = book_.bids.begin();
+    auto ask_it = book_.asks.begin();
 
-    auto bid_it = book.bids.begin();
-    auto ask_it = book.asks.begin();
-
-
-    for (Depth i = 0; i < depth; ++i) {
-        // left side: bids
-        if (bid_it != book.bids.end()) {
-            std::cout << std::setw(8) << bid_it->first << " | "
-                        << std::setw(8) << bid_it->second;
+    for (int i = 0; i < config_.display_depth; ++i) {
+        if (bid_it != book_.bids.end()) {
+            std::cout << std::setw(8) << bid_it->first << " | " << std::setw(8) << bid_it->second;
             ++bid_it;
         } else {
             std::cout << std::setw(8) << "-" << " | " << std::setw(8) << "-";
         }
-
-
         std::cout << "        |   ";
-
-
-        // right side: asks
-        if (ask_it != book.asks.end()) {
-            std::cout << std::setw(8) << ask_it->first << " | "
-                        << std::setw(8) << ask_it->second;
+        if (ask_it != book_.asks.end()) {
+            std::cout << std::setw(8) << ask_it->first << " | " << std::setw(8) << ask_it->second;
             ++ask_it;
         } else {
             std::cout << std::setw(8) << "-" << " | " << std::setw(8) << "-";
         }
 
-
         std::cout << "\n";
     }
-
-
     std::cout << "----------------------------+-----------------------------\n";
     std::cout.flush();
 }
 
-int main() {
-    const std::string addr = "127.0.0.1:50051";
-    auto channel = grpc::CreateChannel(addr, grpc::InsecureChannelCredentials());
-    auto stub = ms::MarketPlantService::NewStub(channel);
-
+void MarketDataSubscriber::Run() {
     ms::Subscription req;
-    req.mutable_subscribe()->add_ids(1);
+    
+    // Subscribe to all configured instrument IDs
+    for (int id : config_.instrument_ids) {
+        req.mutable_subscribe()->add_ids(id);
+    }
+    
     grpc::ClientContext ctx;
-    std::unique_ptr<grpc::ClientReader<ms::StreamResponse>> reader(stub->StreamUpdates(&ctx, req));
-
-    LocalOrderBookCopy book;
-    constexpr Depth kDepth = 10;
+    std::unique_ptr<grpc::ClientReader<ms::StreamResponse>> reader(
+        stub_->StreamUpdates(&ctx, req)
+    );
 
     ms::StreamResponse resp;
     bool got_init = false;
@@ -115,8 +105,11 @@ int main() {
     while (reader->Read(&resp)) {
         if (!got_init && resp.has_init()) {
             got_init = true;
-            std::cout << "Connected. subscriber_id=" << resp.init().subscriber_id()
-                        << " session_id_bytes=" << resp.init().session_id().size() << "\n";
+            for (size_t i = 0; i < config_.instrument_ids.size(); ++i) {
+                if (i > 0) std::cout << ", ";
+                std::cout << config_.instrument_ids[i];
+            }
+            std::cout << "\n";
             continue;
         }
 
@@ -124,11 +117,18 @@ int main() {
         const auto& upd = resp.update();
 
         if (upd.has_snapshot()) {
-            HandleSnapshot(book, upd.snapshot());
-            PrintBookState(book, kDepth);
+            HandleSnapshot(upd.snapshot());
+            PrintBookState();
         } else if (upd.has_incremental()) {
-            HandleEvent(book, upd.incremental().update());
-            PrintBookState(book, kDepth);
+            HandleEvent(upd.incremental().update());
+            PrintBookState();
         }
     }
+}
+
+int main() {
+    SubscriberConfig config = SubscriberConfig::New();
+    MarketDataSubscriber subscriber(config);
+    subscriber.Run();
+    return 0;
 }
