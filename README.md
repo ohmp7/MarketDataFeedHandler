@@ -44,7 +44,7 @@ Below is an example of the message payload utilized (Big-Endian/NBO). As mention
 
 ### **gRPC**
 
-gRPC with server-side streaming is ideal for market data distribution because it provides bidirectional communication over a single persistent connection, eliminating the connection overhead of repeated HTTP requests. Server-side streaming allows the Market Plant to push updates to subscribers in real-time as market events occur, rather than requiring clients to poll for data. 
+I decided to use gRPC with server-side streaming because it provides bidirectional communication over a single persistent connection, thereby eliminating the connection overhead associated with repeated HTTP requests. Server-side streaming enables the Market Plant to push updates to subscribers in real-time as market events occur, eliminating the need for clients to poll for data. 
 
 The protocol also uses **[HTTP/2 multiplexing](https://blog.codavel.com/http2-multiplexing)**, which allows us to handle multiple concurrent streams over a single TCP connection. Lastly, gRPC's native support for structured data via Protocol Buffers provides type-safe message serialization that's more efficient than JSON.
 
