@@ -37,7 +37,7 @@ For Exchange → Plant communication, the simulator sends the feed over **UDP un
 - **Retransmits requests** starting at the missing sequence number, throttled by a timeout and bounded by `MAX_MESSAGE_COUNT`.
 
 Below is an example of the message payload utilized (Big-Endian/NBO). As mentioned before, Each **[MoldUDP64](https://www.nasdaqtrader.com/content/technicalsupport/specifications/dataproducts/moldudp64.pdf)** message is encoded as: `msg_len (u16)` then `msg_len` bytes of payload. The offsets below are byte offsets from the start of the UDP datagram buffer.
-<br></br>
+
 | Payload Offset (bytes) | Field          | Size | Type |
 |---:|---|---:|---|
 | 0–3   | `instrument_id` | 4 | `u32` |
@@ -47,7 +47,6 @@ Below is an example of the message payload utilized (Big-Endian/NBO). As mention
 | 10–13 | `quantity`      | 4 | `u32` |
 | 14–21 | `exchange_ts`   | 8 | `u64` |
 
-<br></br>
 > Note: for this simulator, each UDP datagram carries a single MoldUDP64 message, while preserving the MoldUDP64 Protocol and sequencing semantics.
 
 ### **Exchange Simulator**
