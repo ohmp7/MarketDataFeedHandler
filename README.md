@@ -226,8 +226,8 @@ message Level {
 ```
 
 **Event Types:**
-- `ADD_LEVEL`: Adds quantity to a price level (creates level if it doesn't exist).
-- `REDUCE_LEVEL`: Removes quantity from a price level (deletes level if quantity reaches zero).
+- `ADD_LEVEL`: Adds quantity to a price level _(creates level if it doesn't exist)_.
+- `REDUCE_LEVEL`: Removes quantity from a price level _(deletes level if quantity reaches zero)_.
 
 The repository also includes a **sample subscriber** that displays a live order book:
 
