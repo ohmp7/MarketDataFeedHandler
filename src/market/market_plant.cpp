@@ -1,3 +1,4 @@
+#include "cpu_affinity.h"
 #include "endian.h"
 #include "market_plant.h"
 
@@ -148,10 +149,11 @@ const OrderBook& BookManager::Book(InstrumentId id) const {
 }
 
 
-ExchangeFeed::ExchangeFeed(BookManager& books, const MarketPlantConfig& mp_config)
+ExchangeFeed::ExchangeFeed(BookManager& books, const MarketPlantConfig& mp_config, int cpu_core)
     : sockfd_(socket(AF_INET, SOCK_DGRAM, 0)),
         protocol_(0, sockfd_, mp_config.exchange_ip, mp_config.exchange_port),
-        books_(books) {
+        books_(books),
+        cpu_core_(cpu_core) {
     
     if (sockfd_ < 0) throw std::runtime_error("Error: socket creation to exchange failed.");
     
@@ -173,6 +175,11 @@ ExchangeFeed::~ExchangeFeed() {
 }
 
 void ExchangeFeed::ConnectToExchange() {
+    if (cpu_core_ >= 0) {
+        if (CPUAffinity::PinToCore(cpu_core_)) std::cout << "Successfully pinned Exchange Feed to core " << cpu_core_ << ".\n";
+        else std::cout << "Failed to pin Exchange Feed to core " << cpu_core_ << ".\n";
+    }
+
     std::uint8_t buf[512];
 
     while (true) {
@@ -453,7 +460,7 @@ int main(int argc, char* argv[]) {
     BookManager manager(conf.instruments);
 
     // connect to exchange
-    auto feed = std::make_shared<ExchangeFeed>(manager, mp_config);
+    auto feed = std::make_shared<ExchangeFeed>(manager, mp_config, conf.cpu_core);
     std::thread exchange_feed([feed]{ feed->ConnectToExchange(); });
     exchange_feed.detach();
 

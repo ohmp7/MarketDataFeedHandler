@@ -7,6 +7,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 
 void PrintHelp() {
     std::cout
@@ -16,6 +17,9 @@ void PrintHelp() {
         << "\n"
         << "Options:\n"
         << "  -c, --config   Path to config file\n"
+        << "  --cpu          Pin exchange feed thread to specific CPU core (optional)\n"
+        << "                 Use -1 to disable pinning (default)\n"
+        << "                 Available cores: 0 to " << (std::thread::hardware_concurrency() - 1) << "\n"
         << "  -h, --help     Provide Market Plant CLI information\n";
 }
 
@@ -58,6 +62,20 @@ bool ParseArgs(int argc, char* argv[], MarketPlantCliConfig& out) {
                 ++i;
             } else {
                 throw std::runtime_error("insufficient arguments provided.");
+            }
+        } else if (option == "--cpu") {
+            if (i + 1 < argc) {
+                out.cpu_core = std::stoi(argv[i + 1]);
+                
+                // Validate CPU core
+                int num_cores = static_cast<int>(std::thread::hardware_concurrency());
+                if (out.cpu_core < -1 || out.cpu_core >= num_cores) {
+                    throw std::runtime_error("invalid CPU core: must be -1 (no pinning) or 0 to " + 
+                                           std::to_string(num_cores - 1));
+                }
+                ++i;
+            } else {
+                throw std::runtime_error("--cpu requires a core number.");
             }
         } else {
             throw std::runtime_error("invalid option name provided.");

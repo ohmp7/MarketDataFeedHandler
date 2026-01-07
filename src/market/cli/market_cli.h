@@ -15,6 +15,7 @@ using InstrumentConfig = std::vector<Instrument>;
 
 struct MarketPlantCliConfig {
     InstrumentConfig instruments;
+    int cpu_core = -1;
 };
 
 void PrintHelp();

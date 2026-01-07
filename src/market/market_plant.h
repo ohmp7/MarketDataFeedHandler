@@ -134,7 +134,7 @@ private:
 
 class ExchangeFeed {
 public:
-    ExchangeFeed(BookManager& books, const MarketPlantConfig& mp_config);
+    ExchangeFeed(BookManager& books, const MarketPlantConfig& mp_config, int cpu_core = -1);
     
     ~ExchangeFeed();
 
@@ -152,6 +152,7 @@ private:
     int sockfd_{-1};
     MoldUDP64 protocol_;
     BookManager& books_;
+    int cpu_core_;
 };
 
 
