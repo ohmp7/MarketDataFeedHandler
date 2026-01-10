@@ -61,7 +61,7 @@ To support gap recovery, the simulator also keeps a fixed-size **in-memory histo
 
 - **[`src/app/`](./src/app)** _Top-level applications._
   - **[`exhange/exchange.h`](./src/app/exhange/exchange.h)** _Exchange simulator._ 
-  - **[`subscriber/subscriber.cpp`](./src/app/subscriber/subscriber.h)** _gRPC subscriber client example._
+  - **[`subscriber/subscriber.h`](./src/app/subscriber/subscriber.h)** _gRPC subscriber client example._
 
 - **[`src/market/`](./src/market)** _Market Plant core._
   - **[`market_plant.h`](./src/market/market_plant.h)** _Market Plant server._  
