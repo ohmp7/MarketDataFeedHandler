@@ -22,7 +22,9 @@
 #include "market_plant/market_plant.grpc.pb.h"
 
 #include "event.h"
+#include "exchange_feed.h"
 #include "market_cli.h"
+#include "market_core.h"
 #include "market_plant_config.h"
 #include "moldudp64.h"
 
@@ -74,87 +76,6 @@ private:
     // unordered_set of instruments subscribed to
     std::unordered_set<InstrumentId> subscribed_to_;
 };
-
-
-// All orderbook updates happen from ExchangeFeed
-// All subscription updates happen from the MarketPlantServer
-class OrderBook {
-public:
-    OrderBook(InstrumentId id, Depth depth);
-    
-    void PushEventToSubscribers(const MarketEvent& data);
-
-    void InitializeSubscription(std::shared_ptr<Subscriber> subscriber);
-    
-    void CancelSubscription(SubscriberId id);
-private:
-    void AddOrder(Side side, Price price, Quantity quantity);
-        
-    void RemoveOrder(Side side, Price price, Quantity quantity);
-
-    void Snapshot(ms::SnapshotUpdate* snapshot);
-
-    template <class Levels>
-    static void UpdateLevel(Levels& levels, Price price, Quantity quantity) {
-        auto [it, added] = levels.try_emplace(price, quantity);
-        if (!added) it->second += quantity;
-    }
-    
-    template <class Levels>
-    static void ModifyLevel(Levels& levels, typename Levels::iterator it, Quantity quantity) {
-        if (quantity >= it->second) {
-            levels.erase(it);
-        } else {
-            it->second -= quantity;
-        }
-    }
-
-    std::mutex mutex_;
-    std::map<Price, Quantity, std::greater<Price>> bids_;
-    std::map<Price, Quantity, std::less<Price>> asks_;
-
-    std::unordered_map<SubscriberId, std::weak_ptr<Subscriber>> subscriptions_;
-    InstrumentId id_;
-    Depth depth_;
-};
-
-
-class BookManager {
-public:
-    explicit BookManager(const InstrumentConfig& instruments);
-
-    OrderBook& Book(InstrumentId id);
-
-    const OrderBook& Book(InstrumentId id) const;
-
-private:
-    std::unordered_map<InstrumentId, OrderBook> books_;
-};
-
-
-class ExchangeFeed {
-public:
-    ExchangeFeed(BookManager& books, const MarketPlantConfig& mp_config, int cpu_core = -1);
-    
-    ~ExchangeFeed();
-
-    void ConnectToExchange();
-    
-    const OrderBook& GetOrderBook(InstrumentId id) const;
-
-private:
-    void HandleEvent(const MessageView& message);
-
-    MarketEvent ParseEvent(const MessageView& message);
-
-    sockaddr_in ConstructIpv4(const std::string& ip, std::uint16_t port);
-
-    int sockfd_{-1};
-    MoldUDP64 protocol_;
-    BookManager& books_;
-    int cpu_core_;
-};
-
 
 // handle all subscription and order
 class MarketPlantServer final : public ms::MarketPlantService::Service {

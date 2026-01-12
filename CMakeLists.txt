@@ -48,20 +48,24 @@ target_include_directories(${GENPROTO_LIB}
 
 #  Networking Library
 add_library(network_lib 
-  src/network/moldudp64.cpp 
-  src/network/udp_messenger.cpp
+  src/network/moldudp/moldudp64.cpp 
+  src/network/utils/udp_messenger.cpp
+  src/network/exchange_feed.cpp
 )
 enable_warnings(network_lib)
 target_include_directories(network_lib PUBLIC 
   ${CMAKE_CURRENT_SOURCE_DIR}/src/network
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/network/moldudp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/network/utils
 )
 target_include_directories(network_lib PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src/market
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/market/cli
 )
 
 # Market Plant Executable
 add_executable(market_plant
-  src/market/market_plant.cpp 
+  src/market/server/market_plant.cpp 
   src/market/cli/market_cli.cpp
 )
 enable_warnings(market_plant)
