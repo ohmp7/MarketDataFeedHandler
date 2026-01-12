@@ -1,13 +1,11 @@
 #pragma once
 
-// C++ standard (needed by member fields + function signatures)
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
-#include <map>
 #include <memory>
 #include <mutex>
 #include <random>
@@ -16,17 +14,11 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include <netinet/in.h>
-
 #include <grpcpp/grpcpp.h>
 #include "market_plant/market_plant.grpc.pb.h"
 
 #include "event.h"
-#include "exchange_feed.h"
-#include "market_cli.h"
 #include "market_core.h"
-#include "market_plant_config.h"
-#include "moldudp64.h"
 
 namespace ms = market_plant::v1;
 

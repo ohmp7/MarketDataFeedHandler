@@ -1,6 +1,9 @@
 #include "cpu_affinity.h"
 #include "endian.h"
+#include "exchange_feed.h"
 #include "market_plant.h"
+#include "market_cli.h"
+#include "market_plant_config.h"
 
 #include <arpa/inet.h>
 #include <sys/socket.h>
